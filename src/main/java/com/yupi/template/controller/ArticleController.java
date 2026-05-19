@@ -34,7 +34,7 @@ import jakarta.servlet.http.HttpServletRequest;
 /**
  * 文章接口
  *
- * @author <a href="https://codefather.cn">编程导航学习圈</a>
+ * @author <a href="XXXX">呼哈设计</a>
  */
 @RestController
 @RequestMapping("/article")

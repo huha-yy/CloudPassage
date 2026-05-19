@@ -7,7 +7,7 @@ import java.io.Serializable;
 /**
  * AI 修改大纲请求
  *
- * @author <a href="https://codefather.cn">编程导航学习圈</a>
+ * @author <a href="XXXX">呼哈设计</a>
  */
 @Data
 public class ArticleAiModifyOutlineRequest implements Serializable {

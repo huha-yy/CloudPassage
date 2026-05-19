@@ -20,7 +20,7 @@ import static com.yupi.template.constant.ArticleConstant.PICSUM_URL_TEMPLATE;
  * Nano Banana (Gemini 原生图片生成) 服务
  * 使用 Gemini 2.5 Flash Image 或 Gemini 3 Pro Image 模型生成图片
  *
- * @author <a href="https://codefather.cn">编程导航学习圈</a>
+ * @author <a href="XXXX">呼哈设计</a>
  */
 @Service
 @Slf4j

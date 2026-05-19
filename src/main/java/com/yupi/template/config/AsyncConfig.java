@@ -11,7 +11,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 /**
  * 异步任务配置
  *
- * @author <a href="https://codefather.cn">编程导航学习圈</a>
+ * @author <a href="XXXX">呼哈设计</a>
  */
 @Configuration
 @EnableAsync

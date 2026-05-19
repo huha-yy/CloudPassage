@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 /**
  * 用户实体类
  *
- * @author <a href="https://codefather.cn">编程导航学习圈</a>
+ * @author <a href="XXXX">呼哈设计</a>
  */
 @Data
 @Builder

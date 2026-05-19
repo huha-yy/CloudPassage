@@ -70,3 +70,6 @@ frontend/src/config/env.ts
 *~
 
 .claude/**
+
+go-backend/
+python-backend/

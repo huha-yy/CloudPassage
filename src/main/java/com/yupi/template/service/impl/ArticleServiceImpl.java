@@ -37,7 +37,7 @@ import static com.yupi.template.constant.UserConstant.VIP_ROLE;
 /**
  * 文章服务实现类
  *
- * @author <a href="https://codefather.cn">编程导航学习圈</a>
+ * @author <a href="XXXX">呼哈设计</a>
  */
 @Service
 @Slf4j
