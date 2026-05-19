@@ -449,3 +449,5 @@ public class NewMethodService implements ImageSearchService {
 ## 👨‍💻 作者
 
 <a href="XXXX">呼哈设计</a>
+
+<!-- 初始化项目 -->

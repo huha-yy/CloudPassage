@@ -8,3 +8,5 @@ ALTER TABLE user ADD COLUMN quota int default 5 not null comment '剩余配额' 
 
 -- 为已有用户设置默认配额
 UPDATE user SET quota = 5 WHERE quota IS NULL;
+
+-- 初始化项目

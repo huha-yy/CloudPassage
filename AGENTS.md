@@ -40,3 +40,5 @@
 
 - Copy `.env.example`, `go-backend/.env.example`, `python-backend/.env.example`, or `src/main/resources/application-local.yml.example` before local setup.
 - Never commit real API keys, Stripe secrets, COS credentials, or populated local config files.
+
+<!-- 初始化项目 -->

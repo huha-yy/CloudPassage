@@ -91,3 +91,5 @@ article:
       enabled: true
     # Agent 最大迭代次数
     max-iterations: 10
+
+# 初始化项目

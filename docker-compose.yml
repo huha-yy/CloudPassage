@@ -178,3 +178,5 @@ volumes:
     name: ai-passage-mysql-data
   redis-data:
     name: ai-passage-redis-data
+
+# 初始化项目
