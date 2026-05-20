@@ -61,9 +61,30 @@
               <span class="kv-key">补充描述</span>
               <span class="kv-value multiline">{{ memory.userDescription || '--' }}</span>
             </div>
-            <div class="kv-item">
-              <span class="kv-key">图片策略</span>
-              <span class="kv-value">{{ memory.imageStrategy || '--' }}</span>
+          </div>
+        </div>
+
+        <div class="memory-group">
+          <div class="group-title">
+            <PictureOutlined />
+            <span>图片策略</span>
+          </div>
+          <div class="summary-grid summary-grid--strategy">
+            <div class="summary-card muted">
+              <span class="summary-label">启用方法</span>
+              <span class="summary-value">{{ joinValues(memory.imageStrategy?.methods) }}</span>
+            </div>
+            <div class="summary-card muted">
+              <span class="summary-label">图片来源</span>
+              <span class="summary-value">{{ joinValues(memory.imageStrategy?.sources) }}</span>
+            </div>
+            <div class="summary-card muted">
+              <span class="summary-label">需求数量</span>
+              <span class="summary-value">{{ memory.imageStrategy?.requirementCount ?? 0 }}</span>
+            </div>
+            <div class="summary-card muted">
+              <span class="summary-label">已生成数量</span>
+              <span class="summary-value">{{ memory.imageStrategy?.generatedCount ?? 0 }}</span>
             </div>
           </div>
         </div>
@@ -76,17 +97,35 @@
           <div class="kv-list">
             <div class="kv-item">
               <span class="kv-key">选定标题</span>
-              <span class="kv-value multiline">
-                {{ selectedTitleText }}
-              </span>
+              <span class="kv-value multiline">{{ selectedTitleText }}</span>
             </div>
-            <div class="kv-item">
-              <span class="kv-key">大纲摘要</span>
-              <span class="kv-value multiline">{{ memory.outlineSummary || '--' }}</span>
+          </div>
+
+          <div class="summary-block">
+            <div class="summary-block-title">大纲摘要</div>
+            <div class="summary-text">{{ memory.outlineSummary?.text || '--' }}</div>
+            <div class="meta-line">
+              <span>来源：{{ memory.outlineSummary?.sourceType || '--' }}</span>
+              <span>章节数：{{ memory.outlineSummary?.sourceCount ?? 0 }}</span>
             </div>
-            <div class="kv-item">
-              <span class="kv-key">正文摘要</span>
-              <span class="kv-value multiline">{{ memory.contentSummary || '--' }}</span>
+            <div v-if="memory.outlineSummary?.highlights?.length" class="chip-list">
+              <a-tag v-for="item in memory.outlineSummary.highlights" :key="item" color="cyan">
+                {{ item }}
+              </a-tag>
+            </div>
+          </div>
+
+          <div class="summary-block">
+            <div class="summary-block-title">正文摘要</div>
+            <div class="summary-text">{{ memory.contentSummary?.text || '--' }}</div>
+            <div class="meta-line">
+              <span>来源：{{ memory.contentSummary?.sourceType || '--' }}</span>
+              <span>内容长度：{{ memory.contentSummary?.sourceCount ?? 0 }}</span>
+            </div>
+            <div v-if="memory.contentSummary?.highlights?.length" class="chip-list">
+              <a-tag v-for="item in memory.contentSummary.highlights" :key="item" color="geekblue">
+                {{ item }}
+              </a-tag>
             </div>
           </div>
         </div>
@@ -94,28 +133,43 @@
         <div class="memory-group">
           <div class="group-title">
             <HistoryOutlined />
-            <span>人工动作与质量信号</span>
+            <span>人工动作</span>
           </div>
-          <div class="tag-section">
-            <div class="tag-block">
-              <span class="tag-label">人工动作</span>
-              <div class="tag-list">
-                <a-tag v-for="item in memory.manualActions || []" :key="item" color="green">
-                  {{ item }}
-                </a-tag>
-                <span v-if="!memory.manualActions?.length" class="empty-text">暂无</span>
+          <div v-if="memory.manualActions?.length" class="event-list">
+            <div v-for="(item, index) in memory.manualActions" :key="`${item.type || 'action'}-${index}`" class="event-item action">
+              <div class="event-top">
+                <span class="event-label">{{ item.label || item.type || '--' }}</span>
+                <span class="event-time">{{ formatTimestamp(item.timestamp) }}</span>
               </div>
-            </div>
-            <div class="tag-block">
-              <span class="tag-label">质量信号</span>
-              <div class="tag-list">
-                <a-tag v-for="item in memory.qualitySignals || []" :key="item" color="blue">
-                  {{ item }}
-                </a-tag>
-                <span v-if="!memory.qualitySignals?.length" class="empty-text">暂无</span>
+              <div class="meta-line">
+                <span>阶段：{{ getPhaseText(item.phase) }}</span>
+                <span>节点：{{ getNodeText(item.node) }}</span>
               </div>
+              <div v-if="item.detail" class="event-detail">{{ item.detail }}</div>
             </div>
           </div>
+          <div v-else class="empty-text">暂无人工动作</div>
+        </div>
+
+        <div class="memory-group">
+          <div class="group-title">
+            <RadarChartOutlined />
+            <span>质量信号</span>
+          </div>
+          <div v-if="memory.qualitySignals?.length" class="event-list">
+            <div v-for="(item, index) in memory.qualitySignals" :key="`${item.code || 'signal'}-${index}`" class="event-item signal">
+              <div class="event-top">
+                <span class="event-label">{{ item.label || item.code || '--' }}</span>
+                <span class="event-time">{{ formatTimestamp(item.timestamp) }}</span>
+              </div>
+              <div class="meta-line">
+                <span>阶段：{{ getPhaseText(item.phase) }}</span>
+                <span>节点：{{ getNodeText(item.node) }}</span>
+              </div>
+              <div v-if="item.detail" class="event-detail">{{ item.detail }}</div>
+            </div>
+          </div>
+          <div v-else class="empty-text">暂无质量信号</div>
         </div>
 
         <div v-if="memory.recentErrorMessage" class="memory-group">
@@ -150,6 +204,8 @@ import {
   CloseCircleOutlined,
   DatabaseOutlined,
   HistoryOutlined,
+  PictureOutlined,
+  RadarChartOutlined,
   ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { getTaskMemory } from '@/api/articleController'
@@ -218,7 +274,6 @@ const startRefresh = () => {
   if (!props.autoRefresh || !props.taskId) {
     return
   }
-  // Keep the panel lightweight while still reflecting live task-state changes.
   refreshTimer = setInterval(() => {
     void loadMemory(true)
   }, props.refreshInterval)
@@ -252,6 +307,10 @@ const getNodeText = (node?: string) => {
     workflow_error: '工作流异常',
   }
   return nodeMap[node || ''] || node || '--'
+}
+
+const joinValues = (values?: string[]) => {
+  return values && values.length > 0 ? values.join(' / ') : '--'
 }
 
 const formatTimestamp = (value?: number) => {
@@ -344,6 +403,10 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+
+  &.summary-grid--strategy {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .summary-card {
@@ -358,6 +421,11 @@ onBeforeUnmount(() => {
   &.danger {
     background: linear-gradient(180deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.03) 100%);
     border-color: rgba(239, 68, 68, 0.14);
+  }
+
+  &.muted {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.04) 0%, rgba(15, 23, 42, 0.02) 100%);
+    border-color: rgba(15, 23, 42, 0.08);
   }
 }
 
@@ -424,28 +492,89 @@ onBeforeUnmount(() => {
   }
 }
 
-.tag-section {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.summary-block {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border-light);
 }
 
-.tag-block {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.summary-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 8px;
 }
 
-.tag-label {
+.summary-text {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--color-text);
+  white-space: pre-wrap;
+}
+
+.meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
   font-size: 12px;
-  font-weight: 600;
   color: var(--color-text-muted);
 }
 
-.tag-list {
+.chip-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 10px;
+}
+
+.event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.event-item {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border-light);
+
+  &.action {
+    background: rgba(34, 197, 94, 0.04);
+  }
+
+  &.signal {
+    background: rgba(59, 130, 246, 0.04);
+  }
+}
+
+.event-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.event-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.event-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.event-detail {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
 }
 
 .empty-text {
@@ -481,7 +610,8 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
-  .summary-grid {
+  .summary-grid,
+  .summary-grid.summary-grid--strategy {
     grid-template-columns: 1fr;
   }
 
@@ -490,7 +620,8 @@ onBeforeUnmount(() => {
     gap: 4px;
   }
 
-  .panel-header {
+  .panel-header,
+  .event-top {
     flex-direction: column;
     align-items: stretch;
   }

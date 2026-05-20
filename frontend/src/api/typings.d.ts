@@ -111,12 +111,44 @@
     retryCount?: number
     recentErrorMessage?: string
     selectedTitle?: TitleOption
-    outlineSummary?: string
-    contentSummary?: string
-    imageStrategy?: string
-    qualitySignals?: string[]
-    manualActions?: string[]
+    outlineSummary?: MemorySummaryVO
+    contentSummary?: MemorySummaryVO
+    imageStrategy?: MemoryImageStrategyVO
+    qualitySignals?: MemorySignalVO[]
+    manualActions?: MemoryActionVO[]
     updatedAt?: number
+  }
+
+  type MemorySummaryVO = {
+    text?: string
+    sourceCount?: number
+    highlights?: string[]
+    sourceType?: string
+  }
+
+  type MemoryImageStrategyVO = {
+    methods?: string[]
+    requirementCount?: number
+    generatedCount?: number
+    sources?: string[]
+  }
+
+  type MemorySignalVO = {
+    code?: string
+    label?: string
+    detail?: string
+    phase?: string
+    node?: string
+    timestamp?: number
+  }
+
+  type MemoryActionVO = {
+    type?: string
+    label?: string
+    detail?: string
+    phase?: string
+    node?: string
+    timestamp?: number
   }
 
   type ArticleVO = {
