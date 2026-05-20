@@ -8,7 +8,7 @@
           rel="noopener noreferrer"
           class="author-link"
         >
-          呼哈设计原创项目
+          呼哈设计
         </a>
       </p>
     </div>
@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-// 无需额外的响应式数据
+// No extra script needed.
 </script>
 
 <style scoped>
