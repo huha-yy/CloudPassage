@@ -498,6 +498,19 @@
           </div>
         </div>
 
+        <div
+          v-if="taskId && currentPhase !== 'INPUT'"
+          class="panel-section memory-section"
+        >
+          <TaskMemoryPanel
+            :task-id="taskId"
+            title="任务记忆"
+            subtitle="实时查看当前任务沉淀的上下文、摘要、人工动作与失败线索"
+            :auto-refresh="isCreating || articleStatusText.raw === 'FAILED'"
+            :refresh-interval="2500"
+          />
+        </div>
+
         <!-- 实时执行日志 -->
         <div v-if="realtimeLogs.length > 0" class="panel-section realtime-logs-section">
           <h4 class="panel-title">
@@ -712,6 +725,7 @@ import {
 import { marked } from 'marked'
 import TitleSelectingStage from './components/TitleSelectingStage.vue'
 import OutlineEditingStage from './components/OutlineEditingStage.vue'
+import TaskMemoryPanel from './components/TaskMemoryPanel.vue'
 
 type UiPhase =
   | 'INPUT'
@@ -2693,6 +2707,12 @@ onBeforeUnmount(() => {
 }
 
 /* 实时日志 */
+.memory-section {
+  :deep(.task-memory-panel) {
+    gap: 14px;
+  }
+}
+
 .realtime-logs-section {
   .logs-container {
     max-height: 300px;

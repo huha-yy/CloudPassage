@@ -158,6 +158,16 @@
 
           <a-divider v-if="hasExecutionObservability" />
 
+          <div v-if="article.taskId" class="memory-section">
+            <TaskMemoryPanel
+              :task-id="article.taskId"
+              title="任务记忆面板"
+              subtitle="回看任务执行过程中沉淀的上下文、摘要、动作与失败线索"
+            />
+          </div>
+
+          <a-divider v-if="article.taskId" />
+
           <div v-if="article.outline && article.outline.length > 0" class="outline-section">
             <h2 class="section-title">
               <OrderedListOutlined class="section-icon" />
@@ -233,6 +243,7 @@ import {
 import { getArticle, getExecutionLogs } from '@/api/articleController'
 import { marked } from 'marked'
 import dayjs from 'dayjs'
+import TaskMemoryPanel from './components/TaskMemoryPanel.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -879,6 +890,10 @@ onMounted(() => {
   .expand-leave-from {
     opacity: 1;
     max-height: 2000px;
+  }
+
+  .memory-section {
+    margin-bottom: 28px;
   }
 
   .outline-section {
