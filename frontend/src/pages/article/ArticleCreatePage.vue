@@ -363,6 +363,101 @@
           </div>
         </div>
 
+        <!-- 实时执行观测 -->
+        <div
+          v-if="currentPhase !== 'INPUT' && hasExecutionObservability"
+          class="panel-section observability-section"
+        >
+          <h4 class="panel-title">
+            <ThunderboltOutlined />
+            执行观测
+          </h4>
+
+          <div class="observability-summary">
+            <div class="summary-card">
+              <span class="summary-label">当前阶段</span>
+              <span class="summary-value">
+                {{ latestNodeLog?.phase ? getPhaseDisplayName(latestNodeLog.phase) : agentSteps[currentStep]?.title }}
+              </span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">节点数量</span>
+              <span class="summary-value">{{ executionStats?.nodeCount ?? 0 }}</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">节点均耗时</span>
+              <span class="summary-value">{{ nodeAverageDuration }}ms</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">总耗时</span>
+              <span class="summary-value">{{ executionStats?.totalDurationMs ?? 0 }}ms</span>
+            </div>
+          </div>
+
+          <div v-if="recentNodeTimeline.length > 0" class="observability-group">
+            <div class="observability-group-header">
+              <span class="observability-group-title">节点时间线</span>
+              <span class="observability-group-subtitle">实时显示工作流节点进度与阶段流转</span>
+            </div>
+            <div class="mini-timeline">
+              <div
+                v-for="item in recentNodeTimeline"
+                :key="item.key"
+                :class="['mini-timeline-item', item.status.toLowerCase()]"
+              >
+                <div class="mini-timeline-indicator">
+                  <CheckCircleOutlined v-if="item.status === 'SUCCESS'" class="timeline-icon success" />
+                  <CloseCircleOutlined v-else-if="item.status === 'FAILED'" class="timeline-icon failed" />
+                  <InfoCircleOutlined v-else-if="item.status === 'INFO'" class="timeline-icon info" />
+                  <LoadingOutlined v-else class="timeline-icon running" />
+                </div>
+                <div class="mini-timeline-content">
+                  <div class="mini-timeline-header">
+                    <span class="mini-timeline-title">{{ item.title }}</span>
+                    <span class="mini-timeline-duration">{{ item.duration }}ms</span>
+                  </div>
+                  <div class="mini-timeline-meta">
+                    <span class="timeline-phase-tag">{{ item.phase }}</span>
+                    <span>{{ item.time }}</span>
+                  </div>
+                  <div v-if="item.message" class="mini-timeline-message">{{ item.message }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="recentAgentTimeline.length > 0" class="observability-group">
+            <div class="observability-group-header">
+              <span class="observability-group-title">智能体时间线</span>
+              <span class="observability-group-subtitle">补充显示 LLM / 工具层执行记录</span>
+            </div>
+            <div class="mini-timeline compact">
+              <div
+                v-for="item in recentAgentTimeline"
+                :key="item.key"
+                :class="['mini-timeline-item', item.status.toLowerCase()]"
+              >
+                <div class="mini-timeline-indicator">
+                  <CheckCircleOutlined v-if="item.status === 'SUCCESS'" class="timeline-icon success" />
+                  <CloseCircleOutlined v-else-if="item.status === 'FAILED'" class="timeline-icon failed" />
+                  <LoadingOutlined v-else class="timeline-icon running" />
+                </div>
+                <div class="mini-timeline-content">
+                  <div class="mini-timeline-header">
+                    <span class="mini-timeline-title">{{ item.title }}</span>
+                    <span class="mini-timeline-duration">{{ item.duration }}ms</span>
+                  </div>
+                  <div class="mini-timeline-meta">
+                    <span>{{ getStatusText(item.status) }}</span>
+                    <span>{{ item.time }}</span>
+                  </div>
+                  <div v-if="item.message" class="mini-timeline-message error">{{ item.message }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 实时执行日志 -->
         <div v-if="realtimeLogs.length > 0" class="panel-section realtime-logs-section">
           <h4 class="panel-title">
@@ -564,6 +659,7 @@ import {
   confirmTitle,
   confirmOutline,
   getTaskSnapshot,
+  getExecutionLogs,
 } from '@/api/articleController'
 import { closeSSE, connectSSE, type SSEMessage } from '@/utils/sse'
 import {
@@ -588,6 +684,16 @@ interface RealtimeLog {
   timestamp: number
   level: string
   message: string
+}
+
+interface TimelineLogViewModel {
+  key: string
+  title: string
+  status: string
+  duration: number
+  time: string
+  phase?: string
+  message?: string
 }
 
 interface OutlineItem {
@@ -644,6 +750,7 @@ const errorVisible = ref(false)
 const errorMessage = ref('')
 const confirmLoading = ref(false)
 const realtimeLogs = ref<RealtimeLog[]>([])
+const executionStats = ref<API.AgentExecutionStats | null>(null)
 const titleOptions = ref<TitleOptionViewModel[]>([])
 const outline = ref<API.OutlineSection[]>([])
 const outlineRaw = ref('')
@@ -698,8 +805,89 @@ const parsedOutline = computed<OutlineItem[]>(() => {
 })
 
 let eventSource: EventSource | null = null
+let executionStatsTimer: ReturnType<typeof setInterval> | null = null
+
+const hasExecutionObservability = computed(() => {
+  return !!(
+    executionStats.value &&
+    ((executionStats.value.logs && executionStats.value.logs.length > 0) ||
+      (executionStats.value.nodeLogs && executionStats.value.nodeLogs.length > 0))
+  )
+})
+
+const agentLogs = computed(() => {
+  const logs = executionStats.value?.logs ?? []
+  return [...logs].sort(
+    (a, b) => new Date(a.startTime || 0).getTime() - new Date(b.startTime || 0).getTime(),
+  )
+})
+
+const nodeLogs = computed(() => {
+  const logs = executionStats.value?.nodeLogs ?? []
+  return [...logs].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+})
+
+const latestNodeLog = computed(() => {
+  return nodeLogs.value.length > 0 ? nodeLogs.value[nodeLogs.value.length - 1] : null
+})
+
+const nodeAverageDuration = computed(() => {
+  const durationValues = Object.values(executionStats.value?.nodeDurations ?? {})
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0)
+
+  if (durationValues.length > 0) {
+    return Math.round(
+      durationValues.reduce((sum, value) => sum + value, 0) / durationValues.length,
+    )
+  }
+
+  const elapsedValues = nodeLogs.value
+    .map((log) => Number(log.elapsedMs ?? 0))
+    .filter((value) => Number.isFinite(value) && value > 0)
+
+  return elapsedValues.length > 0
+    ? Math.round(elapsedValues.reduce((sum, value) => sum + value, 0) / elapsedValues.length)
+    : 0
+})
+
+const recentNodeTimeline = computed<TimelineLogViewModel[]>(() => {
+  return [...nodeLogs.value]
+    .slice(-8)
+    .reverse()
+    .map((log, index) => ({
+      key: `${log.node || 'node'}-${log.timestamp || index}`,
+      title: getNodeDisplayName(log.node || ''),
+      status: log.status || 'PENDING',
+      duration: log.elapsedMs ?? 0,
+      time: log.timestamp ? formatLogTime(log.timestamp) : '--',
+      phase: getPhaseDisplayName(log.phase || ''),
+      message: log.message || '',
+    }))
+})
+
+const recentAgentTimeline = computed<TimelineLogViewModel[]>(() => {
+  return [...agentLogs.value]
+    .slice(-4)
+    .reverse()
+    .map((log, index) => ({
+      key: `${log.id || log.agentName || 'agent'}-${index}`,
+      title: getAgentDisplayName(log.agentName || ''),
+      status: log.status || 'PENDING',
+      duration: log.durationMs ?? 0,
+      time: formatDateTime(log.startTime),
+      message: log.errorMessage || '',
+    }))
+})
 
 const markdownToHtml = (markdown: string | undefined) => marked.parse(markdown || '') as string
+
+const formatDateTime = (value?: string) => {
+  if (!value) {
+    return '--'
+  }
+  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+}
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -772,7 +960,42 @@ const closeCurrentConnection = () => {
   eventSource = null
 }
 
+const stopExecutionStatsPolling = () => {
+  if (executionStatsTimer !== null) {
+    clearInterval(executionStatsTimer)
+    executionStatsTimer = null
+  }
+}
+
+const loadExecutionStats = async (activeTaskId: string, silent = true) => {
+  if (!activeTaskId) {
+    return
+  }
+
+  try {
+    const res = await getExecutionLogs({ taskId: activeTaskId })
+    executionStats.value = res.data.data || null
+  } catch (error) {
+    if (!silent) {
+      console.error('Failed to load execution stats:', error)
+    }
+  }
+}
+
+const startExecutionStatsPolling = (activeTaskId: string) => {
+  if (!activeTaskId) {
+    return
+  }
+
+  stopExecutionStatsPolling()
+  void loadExecutionStats(activeTaskId)
+  executionStatsTimer = setInterval(() => {
+    void loadExecutionStats(activeTaskId)
+  }, 2000)
+}
+
 const resetRuntimeState = () => {
+  stopExecutionStatsPolling()
   isCreating.value = false
   isCompleted.value = false
   isStreaming.value = false
@@ -785,6 +1008,7 @@ const resetRuntimeState = () => {
   outline.value = []
   outlineRaw.value = ''
   realtimeLogs.value = []
+  executionStats.value = null
   imageCount.value = 0
   totalImages.value = 5
   imageProgress.value = 0
@@ -916,6 +1140,10 @@ const restoreTask = async (restoreTaskId: string, silent = false) => {
 
     await rememberTask(restoreTaskId)
     applySnapshot(snapshot)
+    await loadExecutionStats(restoreTaskId)
+    if (!['COMPLETED', 'FAILED'].includes(snapshot.status || '')) {
+      startExecutionStatsPolling(restoreTaskId)
+    }
     addLog(`Task restored: ${restoreTaskId}`, 'info')
 
     if (shouldReconnectStream(snapshot)) {
@@ -975,6 +1203,7 @@ const startCreate = async () => {
     }
 
     await rememberTask(newTaskId)
+    startExecutionStatsPolling(newTaskId)
     addLog(`Task created: ${newTaskId}`, 'success')
     await loginUserStore.fetchLoginUser()
     connectToTaskStream(newTaskId)
@@ -1000,6 +1229,62 @@ const addLog = (logMessage: string, level: string = 'info') => {
 const formatLogTime = (timestamp: number) => {
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour12: false })
+}
+
+const getStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    PENDING: '等待中',
+    PROCESSING: '处理中',
+    COMPLETED: '已完成',
+    FAILED: '失败',
+    SUCCESS: '成功',
+    RUNNING: '执行中',
+    INFO: '提示',
+    NOT_FOUND: '暂无数据',
+  }
+  return statusMap[status] || status
+}
+
+const getNodeDisplayName = (node: string) => {
+  const nodeMap: Record<string, string> = {
+    workflow_phase_1: '工作流阶段一',
+    workflow_phase_2: '工作流阶段二',
+    workflow_phase_3: '工作流阶段三',
+    workflow_error: '工作流异常',
+    agent1_generate_titles: '生成标题',
+    agent2_generate_outline: '生成大纲',
+    agent3_generate_content: '生成正文',
+    agent4_analyze_image_requirements: '分析配图需求',
+    agent5_generate_images: '生成配图',
+    agent6_merge_content: '图文合成',
+    ai_modify_outline: 'AI 修改大纲',
+  }
+  return nodeMap[node] || node || '--'
+}
+
+const getPhaseDisplayName = (phase: string) => {
+  const phaseMap: Record<string, string> = {
+    TITLE_GENERATING: '标题生成',
+    TITLE_SELECTING: '标题确认',
+    OUTLINE_GENERATING: '大纲生成',
+    OUTLINE_EDITING: '大纲编辑',
+    CONTENT_GENERATING: '正文生成',
+    PENDING: '等待中',
+  }
+  return phaseMap[phase] || phase || '未标记阶段'
+}
+
+const getAgentDisplayName = (agentName: string) => {
+  const agentMap: Record<string, string> = {
+    agent1_generate_titles: '生成标题',
+    agent2_generate_outline: '生成大纲',
+    agent3_generate_content: '生成正文',
+    agent4_analyze_image_requirements: '分析配图需求',
+    agent5_generate_images: '生成配图',
+    agent6_merge_content: '图文合成',
+    ai_modify_outline: 'AI 修改大纲',
+  }
+  return agentMap[agentName] || agentName || '--'
 }
 
 const handleSSEMessage = async (msg: SSEMessage) => {
@@ -1096,6 +1381,8 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       isCompleted.value = true
       isStreaming.value = false
       isOutlineStreaming.value = false
+      await loadExecutionStats(taskId.value)
+      stopExecutionStatsPolling()
       await forgetTask()
       message.success('Article created successfully')
       addLog('Article creation completed', 'success')
@@ -1110,6 +1397,8 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       if (msg.phase) {
         setUiByPhase(msg.phase, 'FAILED', msg.progress)
       }
+      await loadExecutionStats(taskId.value)
+      stopExecutionStatsPolling()
       await forgetTask()
       addLog(`Task failed: ${msgText}`, 'error')
       break
@@ -1137,6 +1426,7 @@ const handleConfirmTitle = async (data: {
     currentPhase.value = 'OUTLINE_GENERATING'
     isCreating.value = true
     isOutlineStreaming.value = false
+    startExecutionStatsPolling(taskId.value)
     connectToTaskStream(taskId.value, true)
     message.success('Title confirmed, generating outline')
   } catch (error) {
@@ -1160,6 +1450,7 @@ const handleConfirmOutline = async (outlineData: API.OutlineSection[]) => {
     currentStep.value = 2
     isCreating.value = true
     isStreaming.value = false
+    startExecutionStatsPolling(taskId.value)
     connectToTaskStream(taskId.value, true)
     message.success('Outline confirmed, generating content')
   } catch (error) {
@@ -1173,6 +1464,7 @@ const handleConfirmOutline = async (outlineData: API.OutlineSection[]) => {
 const handleSSEError = (error: Event) => {
   console.error('SSE connection error:', error)
   closeCurrentConnection()
+  stopExecutionStatsPolling()
   if (isCompleted.value || currentPhase.value === 'COMPLETED') {
     return
   }
@@ -1184,6 +1476,9 @@ const handleSSEError = (error: Event) => {
 
 const handleSSEComplete = () => {
   closeCurrentConnection()
+  if (currentPhase.value === 'COMPLETED' || errorVisible.value) {
+    stopExecutionStatsPolling()
+  }
 }
 
 const copyContent = async () => {
@@ -1215,6 +1510,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   closeCurrentConnection()
+  stopExecutionStatsPolling()
 })
 </script>
 
@@ -2017,6 +2313,204 @@ onBeforeUnmount(() => {
   }
 }
 
+/* 执行观测 */
+.observability-section {
+  .observability-summary {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .summary-card {
+    padding: 12px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.03) 100%);
+    border: 1px solid rgba(34, 197, 94, 0.12);
+  }
+
+  .summary-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+
+  .summary-value {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-primary-dark);
+    line-height: 1.5;
+  }
+
+  .observability-group + .observability-group {
+    margin-top: 16px;
+  }
+
+  .observability-group-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+
+  .observability-group-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .observability-group-subtitle {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+
+  .mini-timeline {
+    position: relative;
+    padding-left: 4px;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: var(--color-border-light);
+    }
+
+    &.compact .mini-timeline-item {
+      padding-bottom: 10px;
+    }
+  }
+
+  .mini-timeline-item {
+    position: relative;
+    display: flex;
+    gap: 10px;
+    padding-left: 24px;
+    padding-bottom: 14px;
+
+    &:last-child {
+      padding-bottom: 0;
+    }
+  }
+
+  .mini-timeline-indicator {
+    position: absolute;
+    left: 0;
+    top: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    border: 2px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mini-timeline-item.success .mini-timeline-indicator {
+    border-color: var(--color-success);
+  }
+
+  .mini-timeline-item.failed .mini-timeline-indicator {
+    border-color: var(--color-error);
+  }
+
+  .mini-timeline-item.running .mini-timeline-indicator {
+    border-color: var(--color-primary);
+  }
+
+  .mini-timeline-item.info .mini-timeline-indicator {
+    border-color: #1677ff;
+  }
+
+  .timeline-icon {
+    font-size: 12px;
+
+    &.success {
+      color: var(--color-success);
+    }
+
+    &.failed {
+      color: var(--color-error);
+    }
+
+    &.running {
+      color: var(--color-primary);
+    }
+
+    &.info {
+      color: #1677ff;
+    }
+  }
+
+  .mini-timeline-content {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: var(--color-background-secondary);
+    border: 1px solid var(--color-border-light);
+  }
+
+  .mini-timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .mini-timeline-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .mini-timeline-duration {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-primary);
+  }
+
+  .mini-timeline-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+
+  .timeline-phase-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: white;
+    border: 1px solid var(--color-border-light);
+    color: var(--color-text-secondary);
+  }
+
+  .mini-timeline-message {
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+    word-break: break-word;
+    white-space: pre-wrap;
+
+    &.error {
+      color: var(--color-error);
+    }
+  }
+}
+
 /* 实时日志 */
 .realtime-logs-section {
   .logs-container {
@@ -2310,6 +2804,19 @@ onBeforeUnmount(() => {
 
   .main-content {
     padding: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .observability-section {
+    .observability-summary {
+      grid-template-columns: 1fr;
+    }
+
+    .mini-timeline-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
   }
 }
 </style>
