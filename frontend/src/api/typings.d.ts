@@ -61,6 +61,10 @@
     enabledImageMethods?: string[]
   }
 
+  type ArticleResumeRequest = {
+    taskId?: string
+  }
+
   type ArticleQueryRequest = {
     pageNum?: number
     pageSize?: number

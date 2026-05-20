@@ -49,4 +49,6 @@ public interface ArticleService extends IService<Article> {
     void saveTitleOptions(String taskId, List<ArticleState.TitleOption> titleOptions);
 
     List<ArticleState.OutlineSection> aiModifyOutline(String taskId, String modifySuggestion, User loginUser);
+
+    ArticleTaskSnapshotVO resumeTask(String taskId, User loginUser);
 }

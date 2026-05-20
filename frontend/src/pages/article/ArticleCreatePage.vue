@@ -363,6 +363,36 @@
           </div>
         </div>
 
+        <div
+          v-if="canResumeCurrentTask || errorVisible"
+          class="panel-section resume-section"
+        >
+          <h4 class="panel-title">
+            <RedoOutlined />
+            恢复执行
+          </h4>
+          <div class="resume-card">
+            <div class="resume-title">
+              {{ errorVisible ? '当前任务执行中断' : '当前任务可继续执行' }}
+            </div>
+            <div class="resume-desc">
+              <span>任务 ID：{{ taskId || lastFailedTaskId || '--' }}</span>
+              <span>阶段：{{ latestNodeLog?.phase ? getPhaseDisplayName(latestNodeLog.phase) : currentPhase }}</span>
+              <span>状态：{{ articleStatusText.label }}</span>
+            </div>
+            <a-button
+              type="primary"
+              block
+              :loading="confirmLoading"
+              @click="handleResumeTask"
+              class="resume-btn"
+            >
+              <RedoOutlined />
+              从当前阶段继续
+            </a-button>
+          </div>
+        </div>
+
         <!-- 实时执行观测 -->
         <div
           v-if="currentPhase !== 'INPUT' && hasExecutionObservability"
@@ -660,6 +690,7 @@ import {
   confirmOutline,
   getTaskSnapshot,
   getExecutionLogs,
+  resumeTask,
 } from '@/api/articleController'
 import { closeSSE, connectSSE, type SSEMessage } from '@/utils/sse'
 import {
@@ -748,6 +779,7 @@ const currentStep = ref(0)
 const taskId = ref('')
 const errorVisible = ref(false)
 const errorMessage = ref('')
+const lastFailedTaskId = ref('')
 const confirmLoading = ref(false)
 const realtimeLogs = ref<RealtimeLog[]>([])
 const executionStats = ref<API.AgentExecutionStats | null>(null)
@@ -1003,6 +1035,7 @@ const resetRuntimeState = () => {
   currentStep.value = 0
   errorVisible.value = false
   errorMessage.value = ''
+  lastFailedTaskId.value = ''
   confirmLoading.value = false
   titleOptions.value = []
   outline.value = []
@@ -1144,6 +1177,7 @@ const restoreTask = async (restoreTaskId: string, silent = false) => {
     if (!['COMPLETED', 'FAILED'].includes(snapshot.status || '')) {
       startExecutionStatsPolling(restoreTaskId)
     }
+    lastFailedTaskId.value = snapshot.status === 'FAILED' ? restoreTaskId : ''
     addLog(`Task restored: ${restoreTaskId}`, 'info')
 
     if (shouldReconnectStream(snapshot)) {
@@ -1230,6 +1264,26 @@ const formatLogTime = (timestamp: number) => {
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour12: false })
 }
+
+const canResumeCurrentTask = computed(() => {
+  if (!taskId.value || isCreating.value || isCompleted.value) {
+    return false
+  }
+  if (['INPUT', 'TITLE_SELECTING', 'OUTLINE_EDITING', 'COMPLETED'].includes(currentPhase.value)) {
+    return false
+  }
+  return ['FAILED', 'PROCESSING', 'PENDING'].includes(articleStatusText.value.raw)
+})
+
+const articleStatusText = computed(() => {
+  const snapshotStatus = executionStats.value?.overallStatus || ''
+  const fallbackStatus = errorVisible.value ? 'FAILED' : isCompleted.value ? 'COMPLETED' : isCreating.value ? 'PROCESSING' : ''
+  const raw = snapshotStatus || fallbackStatus
+  return {
+    raw,
+    label: getStatusText(raw),
+  }
+})
 
 const getStatusText = (status: string) => {
   const statusMap: Record<string, string> = {
@@ -1381,6 +1435,7 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       isCompleted.value = true
       isStreaming.value = false
       isOutlineStreaming.value = false
+      lastFailedTaskId.value = ''
       await loadExecutionStats(taskId.value)
       stopExecutionStatsPolling()
       await forgetTask()
@@ -1391,6 +1446,7 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       const msgText = String(payload.message || 'Article creation failed')
       errorMessage.value = msgText
       errorVisible.value = true
+      lastFailedTaskId.value = taskId.value
       isCreating.value = false
       isStreaming.value = false
       isOutlineStreaming.value = false
@@ -1493,6 +1549,37 @@ const copyContent = async () => {
 
 const viewArticle = () => {
   router.push(`/article/${taskId.value}`)
+}
+
+const handleResumeTask = async () => {
+  if (!taskId.value) {
+    message.warning('当前没有可恢复的任务')
+    return
+  }
+
+  try {
+    confirmLoading.value = true
+    const activeTaskId = taskId.value
+    const res = await resumeTask({ taskId: activeTaskId })
+    const snapshot = res.data.data
+    if (snapshot) {
+      applySnapshot(snapshot)
+    }
+    errorVisible.value = false
+    errorMessage.value = ''
+    lastFailedTaskId.value = ''
+    isCreating.value = true
+    await rememberTask(activeTaskId)
+    addLog(`Task resumed from ${snapshot?.phase || currentPhase.value}`, 'info')
+    startExecutionStatsPolling(activeTaskId)
+    connectToTaskStream(activeTaskId, true)
+    message.success('已重新接续当前任务')
+  } catch (error) {
+    const err = error as Error
+    message.error(err.message || '恢复任务失败')
+  } finally {
+    confirmLoading.value = false
+  }
 }
 
 onMounted(async () => {
@@ -2310,6 +2397,44 @@ onBeforeUnmount(() => {
   &.waiting {
     background: rgba(250, 173, 20, 0.08);
     color: #d48806;
+  }
+}
+
+.resume-section {
+  .resume-card {
+    padding: 14px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, rgba(250, 173, 20, 0.10) 0%, rgba(250, 173, 20, 0.04) 100%);
+    border: 1px solid rgba(250, 173, 20, 0.18);
+  }
+
+  .resume-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #ad6800;
+    margin-bottom: 8px;
+  }
+
+  .resume-desc {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+
+  .resume-btn.ant-btn {
+    background: linear-gradient(135deg, #faad14 0%, #d48806 100%) !important;
+    border: none !important;
+    color: white !important;
+
+    &:hover,
+    &:focus {
+      opacity: 0.92;
+      color: white !important;
+    }
   }
 }
 

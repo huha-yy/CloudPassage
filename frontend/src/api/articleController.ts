@@ -88,6 +88,21 @@ export async function createArticle(
   })
 }
 
+/** 恢复或重试任务 POST /article/resume */
+export async function resumeTask(
+  body: API.ArticleResumeRequest,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseArticleTaskSnapshotVO>('/article/resume', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  })
+}
+
 /** 删除文章 POST /article/delete */
 export async function deleteArticle(body: API.DeleteRequest, options?: { [key: string]: any }) {
   return request<API.BaseResponseBoolean>('/article/delete', {

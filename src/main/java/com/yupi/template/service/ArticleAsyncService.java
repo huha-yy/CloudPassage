@@ -148,6 +148,31 @@ public class ArticleAsyncService {
         }
     }
 
+    @Async("articleExecutor")
+    public void resumeTask(String taskId) {
+        ArticleState state = articleWorkflowStateFactory.buildFromArticle(taskId);
+        String phase = state.getPhase();
+        log.info("Resume workflow requested, taskId={}, phase={}", taskId, phase);
+
+        if (phase == null || phase.isBlank() || ArticlePhaseEnum.PENDING.getValue().equals(phase)
+                || ArticlePhaseEnum.TITLE_GENERATING.getValue().equals(phase)
+                || ArticlePhaseEnum.TITLE_SELECTING.getValue().equals(phase)) {
+            executePhase1(taskId, state.getTopic(), state.getStyle());
+            return;
+        }
+        if (ArticlePhaseEnum.OUTLINE_GENERATING.getValue().equals(phase)
+                || ArticlePhaseEnum.OUTLINE_EDITING.getValue().equals(phase)) {
+            executePhase2(taskId);
+            return;
+        }
+        if (ArticlePhaseEnum.CONTENT_GENERATING.getValue().equals(phase)) {
+            executePhase3(taskId);
+            return;
+        }
+
+        throw new IllegalStateException("Unsupported resume phase: " + phase);
+    }
+
     private void handlePhaseError(String taskId, ArticleState state, Exception e) {
         log.error("Async workflow failed, taskId={}", taskId, e);
         articleWorkflowEventService.publishNodeInfo(taskId, state.getPhase(), "workflow_error",

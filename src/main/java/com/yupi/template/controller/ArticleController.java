@@ -12,6 +12,7 @@ import com.yupi.template.model.dto.article.ArticleConfirmOutlineRequest;
 import com.yupi.template.model.dto.article.ArticleConfirmTitleRequest;
 import com.yupi.template.model.dto.article.ArticleCreateRequest;
 import com.yupi.template.model.dto.article.ArticleQueryRequest;
+import com.yupi.template.model.dto.article.ArticleResumeRequest;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.User;
 import com.yupi.template.model.enums.ArticleStyleEnum;
@@ -195,5 +196,19 @@ public class ArticleController {
         ThrowUtils.throwIf(taskId == null || taskId.trim().isEmpty(),
                 ErrorCode.PARAMS_ERROR, "Task id cannot be empty");
         return ResultUtils.success(agentLogService.getExecutionStats(taskId));
+    }
+
+    @PostMapping("/resume")
+    @Operation(summary = "Resume or retry an existing task")
+    public BaseResponse<ArticleTaskSnapshotVO> resumeTask(@RequestBody ArticleResumeRequest request,
+                                                          HttpServletRequest httpServletRequest) {
+        ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(request.getTaskId() == null || request.getTaskId().trim().isEmpty(),
+                ErrorCode.PARAMS_ERROR, "Task id cannot be empty");
+
+        User loginUser = userService.getLoginUser(httpServletRequest);
+        ArticleTaskSnapshotVO snapshot = articleService.resumeTask(request.getTaskId(), loginUser);
+        articleAsyncService.resumeTask(request.getTaskId());
+        return ResultUtils.success(snapshot);
     }
 }

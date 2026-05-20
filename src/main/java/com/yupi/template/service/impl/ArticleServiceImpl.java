@@ -302,6 +302,68 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         return modifiedOutline;
     }
 
+    @Override
+    public ArticleTaskSnapshotVO resumeTask(String taskId, User loginUser) {
+        Article article = getArticleWithPermission(taskId, loginUser);
+        ThrowUtils.throwIf(article == null, ErrorCode.NOT_FOUND_ERROR, "Article not found");
+
+        ArticleTaskSnapshotVO snapshot = articleTaskSnapshotService.getSnapshot(taskId, article);
+        ThrowUtils.throwIf(snapshot == null, ErrorCode.NOT_FOUND_ERROR, "Task snapshot not found");
+
+        String phaseValue = snapshot.getPhase();
+        ArticlePhaseEnum phase = ArticlePhaseEnum.getByValue(phaseValue);
+        ThrowUtils.throwIf(phase == null, ErrorCode.OPERATION_ERROR, "Current task phase cannot be resumed");
+
+        String statusValue = snapshot.getStatus();
+        ArticleStatusEnum status = ArticleStatusEnum.getByValue(statusValue);
+        ThrowUtils.throwIf(status == ArticleStatusEnum.COMPLETED,
+                ErrorCode.OPERATION_ERROR, "Completed task does not need to resume");
+
+        ThrowUtils.throwIf(status != ArticleStatusEnum.FAILED && status != ArticleStatusEnum.PROCESSING
+                        && status != ArticleStatusEnum.PENDING,
+                ErrorCode.OPERATION_ERROR, "Current task status does not support resume");
+
+        article.setStatus(ArticleStatusEnum.PROCESSING.getValue());
+        article.setErrorMessage(null);
+        article.setPhase(phase.getValue());
+        this.updateById(article);
+
+        snapshot.setStatus(ArticleStatusEnum.PROCESSING.getValue());
+        snapshot.setErrorMessage(null);
+
+        ArticleState resumeState = new ArticleState();
+        resumeState.setTaskId(taskId);
+        resumeState.setTopic(snapshot.getTopic());
+        resumeState.setStyle(snapshot.getStyle());
+        resumeState.setUserDescription(snapshot.getUserDescription());
+        resumeState.setPhase(phase.getValue());
+        resumeState.setProgress(snapshot.getProgress());
+        if (snapshot.getTitle() != null) {
+            resumeState.setTitle(snapshot.getTitle());
+        }
+        if (snapshot.getTitleOptions() != null) {
+            resumeState.setTitleOptions(snapshot.getTitleOptions());
+        }
+        if (snapshot.getOutline() != null) {
+            ArticleState.OutlineResult outlineResult = new ArticleState.OutlineResult();
+            outlineResult.setSections(snapshot.getOutline());
+            resumeState.setOutline(outlineResult);
+        }
+        resumeState.setOutlineRaw(snapshot.getOutlineRaw());
+        resumeState.setContent(snapshot.getContent());
+        resumeState.setFullContent(snapshot.getFullContent());
+        if (snapshot.getImageRequirements() != null) {
+            resumeState.setImageRequirements(snapshot.getImageRequirements());
+        }
+        if (snapshot.getImages() != null) {
+            resumeState.setImages(snapshot.getImages());
+        }
+        articleTaskSnapshotService.saveSnapshot(resumeState, ArticleStatusEnum.PROCESSING, phase, null);
+
+        log.info("Task marked resumable, taskId={}, phase={}, status={}", taskId, phaseValue, statusValue);
+        return articleTaskSnapshotService.getSnapshot(taskId, article);
+    }
+
     private Article getArticleWithPermission(String taskId, User loginUser) {
         Article article = getByTaskId(taskId);
         ThrowUtils.throwIf(article == null, ErrorCode.NOT_FOUND_ERROR, "Article not found");
