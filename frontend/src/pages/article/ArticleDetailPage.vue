@@ -36,7 +36,6 @@
     <div class="container">
       <a-spin :spinning="loading" tip="加载中...">
         <a-card :bordered="false" v-if="article" class="article-card">
-          <!-- 标题 -->
           <div class="title-section">
             <h1 class="main-title">{{ article.mainTitle }}</h1>
             <p class="sub-title">{{ article.subTitle }}</p>
@@ -50,14 +49,13 @@
 
           <a-divider />
 
-          <!-- 执行日志面板 -->
-          <div v-if="executionStats && executionStats.logs && executionStats.logs.length > 0" class="execution-logs-section">
+          <div v-if="hasExecutionObservability" class="execution-logs-section">
             <div class="logs-header" @click="showExecutionLogs = !showExecutionLogs">
               <h2 class="section-title">
                 <ClockCircleOutlined class="section-icon" />
-                执行日志
-                <a-tag :color="getStatusColor(executionStats.overallStatus ?? '')" class="status-tag-small">
-                  {{ executionStats.overallStatus ?? '' }}
+                执行观测面板
+                <a-tag :color="getStatusColor(executionStats?.overallStatus ?? '')" class="status-tag-small">
+                  {{ getStatusText(executionStats?.overallStatus ?? '') }}
                 </a-tag>
               </h2>
               <ThunderboltOutlined :class="['toggle-icon', { expanded: showExecutionLogs }]" />
@@ -65,57 +63,101 @@
 
             <Transition name="expand">
               <div v-show="showExecutionLogs" class="logs-content">
-                <!-- 统计概览 -->
-                <div class="stats-summary">
-                  <div class="stat-item">
-                    <span class="label">总耗时</span>
-                    <span class="value">{{ executionStats.totalDurationMs ?? 0 }}ms</span>
+                <a-spin :spinning="logsLoading">
+                  <div class="stats-summary stats-summary--four">
+                    <div class="stat-item">
+                      <span class="label">总耗时</span>
+                      <span class="value">{{ executionStats?.totalDurationMs ?? 0 }}ms</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="label">智能体数量</span>
+                      <span class="value">{{ executionStats?.agentCount ?? 0 }}</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="label">节点数量</span>
+                      <span class="value">{{ executionStats?.nodeCount ?? 0 }}</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="label">节点平均耗时</span>
+                      <span class="value">{{ nodeAverageDuration }}ms</span>
+                    </div>
                   </div>
-                  <div class="stat-item">
-                    <span class="label">智能体数量</span>
-                    <span class="value">{{ executionStats.agentCount ?? 0 }}</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="label">平均耗时</span>
-                    <span class="value">
-                      {{ executionStats.agentCount && executionStats.totalDurationMs ? Math.round(executionStats.totalDurationMs / executionStats.agentCount) : 0 }}ms
-                    </span>
-                  </div>
-                </div>
 
-                <!-- 智能体时间线 -->
-                <div class="agent-timeline">
-                  <div
-                    v-for="log in executionStats.logs"
-                    :key="log.id"
-                    :class="['timeline-item', log.status?.toLowerCase()]"
-                  >
-                    <div class="timeline-indicator">
-                      <CheckCircleOutlined v-if="log.status === 'SUCCESS'" class="icon success" />
-                      <CloseCircleOutlined v-else-if="log.status === 'FAILED'" class="icon failed" />
-                      <LoadingOutlined v-else class="icon running" />
+                  <div v-if="nodeLogs.length > 0" class="timeline-section">
+                    <div class="timeline-section-header">
+                      <span class="timeline-section-title">节点时间线</span>
+                      <span class="timeline-section-subtitle">展示工作流节点、阶段切换、执行耗时与关键提示</span>
                     </div>
-                    <div class="timeline-content">
-                      <div class="timeline-header">
-                        <span class="agent-name">{{ getAgentDisplayName(log.agentName ?? '') }}</span>
-                        <span class="duration">{{ log.durationMs ?? 0 }}ms</span>
-                      </div>
-                      <div class="timeline-time">
-                        {{ log.startTime ? formatDate(log.startTime) : '' }}
-                      </div>
-                      <div v-if="log.errorMessage" class="error-message">
-                        <CloseCircleOutlined /> {{ log.errorMessage }}
+                    <div class="agent-timeline node-timeline">
+                      <div
+                        v-for="(log, index) in nodeLogs"
+                        :key="`${log.node || 'node'}-${log.timestamp || index}`"
+                        :class="['timeline-item', (log.status || '').toLowerCase()]"
+                      >
+                        <div class="timeline-indicator">
+                          <CheckCircleOutlined v-if="log.status === 'SUCCESS'" class="icon success" />
+                          <CloseCircleOutlined v-else-if="log.status === 'FAILED'" class="icon failed" />
+                          <InfoCircleOutlined v-else-if="log.status === 'INFO'" class="icon info" />
+                          <LoadingOutlined v-else class="icon running" />
+                        </div>
+                        <div class="timeline-content">
+                          <div class="timeline-header">
+                            <div class="timeline-heading">
+                              <span class="agent-name">{{ getNodeDisplayName(log.node ?? '') }}</span>
+                              <span class="timeline-phase">{{ getPhaseDisplayName(log.phase ?? '') }}</span>
+                            </div>
+                            <span class="duration">{{ log.elapsedMs ?? 0 }}ms</span>
+                          </div>
+                          <div class="timeline-time">{{ formatNodeTime(log.timestamp) }}</div>
+                          <div v-if="log.message" class="timeline-message">
+                            {{ log.message }}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+
+                  <div v-if="agentLogs.length > 0" class="timeline-section">
+                    <div class="timeline-section-header">
+                      <span class="timeline-section-title">智能体时间线</span>
+                      <span class="timeline-section-subtitle">展示 LLM / 工具层调用记录与错误信息</span>
+                    </div>
+                    <div class="agent-timeline">
+                      <div
+                        v-for="log in agentLogs"
+                        :key="log.id"
+                        :class="['timeline-item', (log.status || '').toLowerCase()]"
+                      >
+                        <div class="timeline-indicator">
+                          <CheckCircleOutlined v-if="log.status === 'SUCCESS'" class="icon success" />
+                          <CloseCircleOutlined v-else-if="log.status === 'FAILED'" class="icon failed" />
+                          <LoadingOutlined v-else class="icon running" />
+                        </div>
+                        <div class="timeline-content">
+                          <div class="timeline-header">
+                            <span class="agent-name">{{ getAgentDisplayName(log.agentName ?? '') }}</span>
+                            <span class="duration">{{ log.durationMs ?? 0 }}ms</span>
+                          </div>
+                          <div class="timeline-time">
+                            {{ log.startTime ? formatDate(log.startTime) : '' }}
+                          </div>
+                          <div v-if="log.prompt" class="timeline-message subtle">
+                            {{ log.prompt }}
+                          </div>
+                          <div v-if="log.errorMessage" class="error-message">
+                            <CloseCircleOutlined /> {{ log.errorMessage }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </a-spin>
               </div>
             </Transition>
           </div>
 
-          <a-divider v-if="executionStats && executionStats.logs && executionStats.logs.length > 0" />
+          <a-divider v-if="hasExecutionObservability" />
 
-          <!-- 大纲 -->
           <div v-if="article.outline && article.outline.length > 0" class="outline-section">
             <h2 class="section-title">
               <OrderedListOutlined class="section-icon" />
@@ -133,7 +175,6 @@
 
           <a-divider v-if="article.outline && article.outline.length > 0" />
 
-          <!-- 完整图文（优先展示） -->
           <div v-if="article.fullContent" class="content-section">
             <h2 class="section-title">
               <FileTextOutlined class="section-icon" />
@@ -142,7 +183,6 @@
             <div v-html="markdownToHtml(article.fullContent)" class="markdown-content"></div>
           </div>
 
-          <!-- 普通正文（无 fullContent 时展示） -->
           <div v-else-if="article.content" class="content-section">
             <h2 class="section-title">
               <FileTextOutlined class="section-icon" />
@@ -151,7 +191,6 @@
             <div v-html="markdownToHtml(article.content)" class="markdown-content"></div>
           </div>
 
-          <!-- 配图（仅在没有 fullContent 时单独展示） -->
           <div v-if="!article.fullContent && article.images && article.images.length > 0" class="images-section">
             <h2 class="section-title">
               <PictureOutlined class="section-icon" />
@@ -174,7 +213,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
@@ -186,9 +225,10 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
+  InfoCircleOutlined,
   LoadingOutlined,
   RedoOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 import { getArticle, getExecutionLogs } from '@/api/articleController'
 import { marked } from 'marked'
@@ -203,16 +243,50 @@ const executionStats = ref<API.AgentExecutionStats | null>(null)
 const logsLoading = ref(false)
 const showExecutionLogs = ref(false)
 
-// Markdown 转 HTML
+const hasExecutionObservability = computed(() => {
+  return !!(
+    executionStats.value &&
+    ((executionStats.value.logs && executionStats.value.logs.length > 0) ||
+      (executionStats.value.nodeLogs && executionStats.value.nodeLogs.length > 0))
+  )
+})
+
+const agentLogs = computed(() => {
+  const logs = executionStats.value?.logs ?? []
+  return [...logs].sort((a, b) => dayjs(a.startTime).valueOf() - dayjs(b.startTime).valueOf())
+})
+
+const nodeLogs = computed(() => {
+  const logs = executionStats.value?.nodeLogs ?? []
+  return [...logs].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+})
+
+const nodeAverageDuration = computed(() => {
+  const durations = Object.values(executionStats.value?.nodeDurations ?? {})
+    .map(value => Number(value))
+    .filter(value => Number.isFinite(value) && value >= 0)
+
+  if (durations.length > 0) {
+    return Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
+  }
+
+  const elapsedList = nodeLogs.value
+    .map(log => Number(log.elapsedMs ?? 0))
+    .filter(value => Number.isFinite(value) && value > 0)
+
+  return elapsedList.length > 0
+    ? Math.round(elapsedList.reduce((sum, value) => sum + value, 0) / elapsedList.length)
+    : 0
+})
+
 const markdownToHtml = (markdown: string) => {
   return marked(markdown)
 }
 
-// 加载文章
 const loadArticle = async () => {
   const taskId = route.params.taskId as string
   if (!taskId) {
-    message.error('文章ID不存在')
+    message.error('文章 ID 不存在')
     return
   }
 
@@ -220,16 +294,14 @@ const loadArticle = async () => {
   try {
     const res = await getArticle({ taskId })
     article.value = res.data.data || null
-    // 自动加载执行日志
     await loadExecutionLogs(taskId)
   } catch (error) {
-    message.error((error as Error).message || '加载失败')
+    message.error((error as Error).message || '加载文章失败')
   } finally {
     loading.value = false
   }
 }
 
-// 加载执行日志
 const loadExecutionLogs = async (taskId: string) => {
   logsLoading.value = true
   try {
@@ -242,19 +314,16 @@ const loadExecutionLogs = async (taskId: string) => {
   }
 }
 
-// 返回
 const goBack = () => {
   router.back()
 }
 
-// 导出 Markdown
 const exportMarkdown = () => {
   if (!article.value) return
 
   let markdown = `# ${article.value.mainTitle}\n\n`
   markdown += `> ${article.value.subTitle}\n\n`
 
-  // 优先使用完整图文
   if (article.value.fullContent) {
     markdown += article.value.fullContent
   } else {
@@ -287,64 +356,101 @@ const exportMarkdown = () => {
   message.success('导出成功')
 }
 
-// 格式化日期
 const formatDate = (date: string) => {
   return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
 }
 
-// 获取状态颜色
+const formatNodeTime = (timestamp?: number) => {
+  if (!timestamp) return '--'
+  return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
+}
+
 const getStatusColor = (status: string) => {
   const colorMap: Record<string, string> = {
     PENDING: 'default',
     PROCESSING: 'processing',
     COMPLETED: 'success',
     FAILED: 'error',
+    SUCCESS: 'success',
+    RUNNING: 'processing',
+    INFO: 'blue',
+    NOT_FOUND: 'default',
   }
   return colorMap[status] || 'default'
 }
 
-// 获取状态文本
 const getStatusText = (status: string) => {
   const textMap: Record<string, string> = {
     PENDING: '等待中',
-    PROCESSING: '生成中',
+    PROCESSING: '处理中',
     COMPLETED: '已完成',
     FAILED: '失败',
+    SUCCESS: '成功',
+    RUNNING: '执行中',
+    INFO: '提示',
+    NOT_FOUND: '暂无数据',
   }
   return textMap[status] || status
 }
 
-// 获取智能体显示名称
 const getAgentDisplayName = (agentName: string) => {
   const nameMap: Record<string, string> = {
-    'agent1_generate_titles': '生成标题',
-    'agent2_generate_outline': '生成大纲',
-    'agent3_generate_content': '生成正文',
-    'agent4_analyze_image_requirements': '分析配图需求',
-    'agent5_generate_images': '生成配图',
-    'agent6_merge_content': '图文合成',
-    'ai_modify_outline': 'AI修改大纲'
+    agent1_generate_titles: '生成标题',
+    agent2_generate_outline: '生成大纲',
+    agent3_generate_content: '生成正文',
+    agent4_analyze_image_requirements: '分析配图需求',
+    agent5_generate_images: '生成配图',
+    agent6_merge_content: '图文合成',
+    ai_modify_outline: 'AI 修改大纲',
   }
   return nameMap[agentName] || agentName
 }
 
-// 重试（重新创建文章）
+const getNodeDisplayName = (node: string) => {
+  const nameMap: Record<string, string> = {
+    workflow_phase_1: '工作流阶段一',
+    workflow_phase_2: '工作流阶段二',
+    workflow_phase_3: '工作流阶段三',
+    workflow_error: '工作流异常',
+    agent1_generate_titles: '生成标题',
+    agent2_generate_outline: '生成大纲',
+    agent3_generate_content: '生成正文',
+    agent4_analyze_image_requirements: '分析配图需求',
+    agent5_generate_images: '生成配图',
+    agent6_merge_content: '图文合成',
+    ai_modify_outline: 'AI 修改大纲',
+  }
+  return nameMap[node] || node
+}
+
+const getPhaseDisplayName = (phase: string) => {
+  const phaseMap: Record<string, string> = {
+    TITLE_GENERATING: '标题生成',
+    TITLE_SELECTING: '标题确认',
+    OUTLINE_GENERATING: '大纲生成',
+    OUTLINE_EDITING: '大纲调整',
+    CONTENT_GENERATING: '正文生成',
+    PENDING: '等待中',
+  }
+  return phaseMap[phase] || phase
+}
+
 const handleRetry = () => {
   if (!article.value) return
 
   Modal.confirm({
     title: '确认重试',
-    content: '将使用相同的选题和配置重新创建文章，是否继续？',
+    content: '将使用相同选题重新回到创建页，是否继续？',
     okText: '确认',
     cancelText: '取消',
     onOk: () => {
       router.push({
         path: '/create',
         query: {
-          topic: article.value?.topic
-        }
+          topic: article.value?.topic,
+        },
       })
-    }
+    },
   })
 }
 
@@ -500,7 +606,6 @@ onMounted(() => {
     margin-left: 8px;
   }
 
-  /* 执行日志部分 */
   .execution-logs-section {
     margin-bottom: 28px;
     background: var(--color-background-secondary);
@@ -551,6 +656,10 @@ onMounted(() => {
       border-radius: var(--radius-md);
       border: 1px solid var(--color-border-light);
 
+      &.stats-summary--four {
+        grid-template-columns: repeat(4, 1fr);
+      }
+
       .stat-item {
         text-align: center;
 
@@ -568,6 +677,34 @@ onMounted(() => {
           color: var(--color-primary);
         }
       }
+    }
+
+    .timeline-section {
+      margin-top: 24px;
+
+      &:first-of-type {
+        margin-top: 0;
+      }
+    }
+
+    .timeline-section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .timeline-section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    .timeline-section-subtitle {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      text-align: right;
     }
 
     .agent-timeline {
@@ -619,6 +756,10 @@ onMounted(() => {
             &.running {
               color: var(--color-primary);
             }
+
+            &.info {
+              color: #1677ff;
+            }
           }
         }
 
@@ -628,6 +769,14 @@ onMounted(() => {
 
         &.failed .timeline-indicator {
           border-color: var(--color-error);
+        }
+
+        &.running .timeline-indicator {
+          border-color: var(--color-primary);
+        }
+
+        &.info .timeline-indicator {
+          border-color: #1677ff;
         }
 
         .timeline-content {
@@ -640,24 +789,57 @@ onMounted(() => {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
             margin-bottom: 4px;
+          }
 
-            .agent-name {
-              font-size: 14px;
-              font-weight: 600;
-              color: var(--color-text);
-            }
+          .timeline-heading {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
 
-            .duration {
-              font-size: 13px;
-              font-weight: 600;
-              color: var(--color-primary);
-            }
+          .agent-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-text);
+          }
+
+          .timeline-phase {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: var(--radius-full);
+            background: var(--color-background-secondary);
+            border: 1px solid var(--color-border-light);
+            color: var(--color-text-secondary);
+            font-size: 12px;
+          }
+
+          .duration {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-primary);
+            white-space: nowrap;
           }
 
           .timeline-time {
             font-size: 12px;
             color: var(--color-text-muted);
+          }
+
+          .timeline-message {
+            margin-top: 10px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--color-text-secondary);
+            white-space: pre-wrap;
+            word-break: break-word;
+
+            &.subtle {
+              color: var(--color-text-muted);
+            }
           }
 
           .error-message {
@@ -681,7 +863,6 @@ onMounted(() => {
     }
   }
 
-  /* 展开/收起动画 */
   .expand-enter-active,
   .expand-leave-active {
     transition: all 0.3s ease;
@@ -768,7 +949,8 @@ onMounted(() => {
         color: var(--color-text);
       }
 
-      :deep(ul), :deep(ol) {
+      :deep(ul),
+      :deep(ol) {
         margin-bottom: 14px;
         padding-left: 2em;
       }
@@ -790,8 +972,7 @@ onMounted(() => {
         object-fit: contain;
       }
 
-      // Mermaid 图表特殊处理（SVG 格式）
-      :deep(img[src$=".svg"]) {
+      :deep(img[src$='.svg']) {
         max-width: 800px;
         max-height: 500px;
       }
@@ -850,6 +1031,17 @@ onMounted(() => {
 
 @media (max-width: 768px) {
   .article-detail-page {
+    .header-actions {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+    }
+
+    .right-actions {
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
     .article-card {
       :deep(.ant-card-body) {
         padding: 24px;
@@ -863,6 +1055,36 @@ onMounted(() => {
 
       .sub-title {
         font-size: 14px;
+      }
+    }
+
+    .execution-logs-section {
+      .stats-summary {
+        grid-template-columns: repeat(2, 1fr);
+
+        &.stats-summary--four {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      .timeline-section-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .timeline-section-subtitle {
+        text-align: left;
+      }
+
+      .agent-timeline {
+        .timeline-item {
+          .timeline-content {
+            .timeline-header {
+              flex-direction: column;
+              align-items: flex-start;
+            }
+          }
+        }
       }
     }
   }
