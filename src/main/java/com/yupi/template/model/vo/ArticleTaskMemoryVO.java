@@ -56,6 +56,8 @@ public class ArticleTaskMemoryVO implements Serializable {
 
     private List<MemoryActionVO> manualActions;
 
+    private List<NodeSnapshotVO> nodeSnapshots;
+
     private Long updatedAt;
 
     @Data
@@ -134,6 +136,32 @@ public class ArticleTaskMemoryVO implements Serializable {
         private String phase;
 
         private String node;
+
+        private Long timestamp;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class NodeSnapshotVO implements Serializable {
+
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        private String node;
+
+        private String phase;
+
+        private String label;
+
+        private String status;
+
+        private String summary;
+
+        private String detail;
+
+        private List<String> highlights;
 
         private Long timestamp;
     }

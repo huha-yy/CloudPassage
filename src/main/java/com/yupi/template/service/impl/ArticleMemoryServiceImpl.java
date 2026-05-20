@@ -33,6 +33,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
     private static final long TASK_MEMORY_TTL_HOURS = 24L * 7;
     private static final int MAX_ACTIONS = 12;
     private static final int MAX_SIGNALS = 12;
+    private static final int MAX_NODE_SNAPSHOTS = 12;
     private static final int MAX_SUMMARY_LENGTH = 200;
     private static final int MAX_HIGHLIGHTS = 4;
 
@@ -203,6 +204,20 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
     }
 
     @Override
+    public void recordNodeSnapshot(String taskId, String phase, String node, String status, ArticleState state) {
+        if (isBlank(taskId) || isBlank(node)) {
+            return;
+        }
+        ArticleTaskMemoryVO memory = getOrCreate(taskId);
+        mergeArticle(memory, findArticle(taskId));
+        mergeState(memory, state);
+        mergeLatestNodes(memory, taskId);
+        addNodeSnapshot(memory, buildNodeSnapshot(node, phase, status, state));
+        touch(memory);
+        persist(memory);
+    }
+
+    @Override
     public ArticleTaskMemoryVO getTaskMemory(String taskId) {
         return readMemory(taskId);
     }
@@ -218,6 +233,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                 .retryCount(0)
                 .qualitySignals(new ArrayList<>())
                 .manualActions(new ArrayList<>())
+                .nodeSnapshots(new ArrayList<>())
                 .build();
     }
 
@@ -227,6 +243,9 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         }
         if (memory.getManualActions() == null) {
             memory.setManualActions(new ArrayList<>());
+        }
+        if (memory.getNodeSnapshots() == null) {
+            memory.setNodeSnapshots(new ArrayList<>());
         }
         if (memory.getRetryCount() == null) {
             memory.setRetryCount(0);
@@ -362,12 +381,9 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             ensureCollections(memoryVO);
             return memoryVO;
         }
-        ArticleTaskMemoryVO memory = null;
-        if (cached instanceof String json) {
-            memory = GsonUtils.fromJsonSafe(json, ArticleTaskMemoryVO.class);
-        } else {
-            memory = GsonUtils.fromJsonSafe(GsonUtils.toJson(cached), ArticleTaskMemoryVO.class);
-        }
+        ArticleTaskMemoryVO memory = cached instanceof String json
+                ? GsonUtils.fromJsonSafe(json, ArticleTaskMemoryVO.class)
+                : GsonUtils.fromJsonSafe(GsonUtils.toJson(cached), ArticleTaskMemoryVO.class);
         if (memory == null) {
             return null;
         }
@@ -382,7 +398,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         }
         if (memory.getOutlineSummary() == null || memory.getContentSummary() == null
                 || memory.getImageStrategy() == null || memory.getQualitySignals() == null
-                || memory.getManualActions() == null) {
+                || memory.getManualActions() == null || memory.getNodeSnapshots() == null) {
             String json = rawCached instanceof String ? (String) rawCached : GsonUtils.toJson(rawCached);
             LegacyTaskMemoryVO legacy = GsonUtils.fromJsonSafe(json, LegacyTaskMemoryVO.class);
             if (legacy != null) {
@@ -414,6 +430,10 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                             .filter(value -> !value.isBlank())
                             .map(code -> buildAction(code, mapActionLabel(code), code, memory.getCurrentPhase(), null))
                             .collect(Collectors.toCollection(ArrayList::new)));
+                }
+                if ((memory.getNodeSnapshots() == null || memory.getNodeSnapshots().isEmpty())
+                        && legacy.getNodeSnapshots() != null) {
+                    memory.setNodeSnapshots(new ArrayList<>(legacy.getNodeSnapshots()));
                 }
             }
         }
@@ -459,6 +479,13 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         deduplicateAndPrepend(memory.getManualActions(), action, MAX_ACTIONS);
     }
 
+    private void addNodeSnapshot(ArticleTaskMemoryVO memory, ArticleTaskMemoryVO.NodeSnapshotVO snapshot) {
+        if (memory == null || snapshot == null) {
+            return;
+        }
+        deduplicateAndPrependNodeSnapshot(memory.getNodeSnapshots(), snapshot, MAX_NODE_SNAPSHOTS);
+    }
+
     private void deduplicateAndPrepend(List<ArticleTaskMemoryVO.MemorySignalVO> items,
                                        ArticleTaskMemoryVO.MemorySignalVO value,
                                        int maxSize) {
@@ -485,8 +512,19 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         }
     }
 
+    private void deduplicateAndPrependNodeSnapshot(List<ArticleTaskMemoryVO.NodeSnapshotVO> items,
+                                                   ArticleTaskMemoryVO.NodeSnapshotVO value,
+                                                   int maxSize) {
+        items.removeIf(item -> Objects.equals(item.getNode(), value.getNode())
+                && Objects.equals(item.getPhase(), value.getPhase()));
+        items.add(0, value);
+        while (items.size() > maxSize) {
+            items.remove(items.size() - 1);
+        }
+    }
+
     private ArticleTaskMemoryVO.MemorySummaryVO buildOutlineSummary(List<ArticleState.OutlineSection> outlineSections,
-                                                                   String sourceType) {
+                                                                    String sourceType) {
         if (outlineSections == null || outlineSections.isEmpty()) {
             return null;
         }
@@ -503,8 +541,8 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
     }
 
     private ArticleTaskMemoryVO.MemorySummaryVO buildContentSummary(String preferred,
-                                                                   String fallback,
-                                                                   String sourceType) {
+                                                                    String fallback,
+                                                                    String sourceType) {
         String content = !isBlank(preferred) ? preferred : fallback;
         if (isBlank(content)) {
             return null;
@@ -539,7 +577,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             return Collections.emptyList();
         }
         List<String> parts = new ArrayList<>();
-        String[] candidates = content.split("(?<=[。！？!?.])\\s+|\\n+");
+        String[] candidates = content.split("(?<=[。！？!?])\\s+|\\n+");
         for (String candidate : candidates) {
             String trimmed = candidate.trim();
             if (trimmed.isEmpty()) {
@@ -590,6 +628,166 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                 .detail(detail)
                 .phase(phase)
                 .node(node)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    private ArticleTaskMemoryVO.NodeSnapshotVO buildNodeSnapshot(String node,
+                                                                 String phase,
+                                                                 String status,
+                                                                 ArticleState state) {
+        return switch (node) {
+            case "workflow_phase_1", "agent1_generate_titles" -> buildTitleNodeSnapshot(node, phase, status, state);
+            case "workflow_phase_2", "agent2_generate_outline", "ai_modify_outline" ->
+                    buildOutlineNodeSnapshot(node, phase, status, state);
+            case "workflow_phase_3", "agent3_generate_content" -> buildContentNodeSnapshot(node, phase, status, state);
+            case "agent4_analyze_image_requirements" -> buildImageRequirementSnapshot(node, phase, status, state);
+            case "agent5_generate_images" -> buildImageGenerationSnapshot(node, phase, status, state);
+            case "agent6_merge_content" -> buildMergeSnapshot(node, phase, status, state);
+            default -> ArticleTaskMemoryVO.NodeSnapshotVO.builder()
+                    .node(node)
+                    .phase(phase)
+                    .label(node)
+                    .status(status)
+                    .summary("节点已执行")
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+        };
+    }
+
+    private ArticleTaskMemoryVO.NodeSnapshotVO buildTitleNodeSnapshot(String node,
+                                                                      String phase,
+                                                                      String status,
+                                                                      ArticleState state) {
+        List<String> titles = state == null || state.getTitleOptions() == null
+                ? Collections.emptyList()
+                : state.getTitleOptions().stream()
+                .filter(Objects::nonNull)
+                .map(title -> firstNonBlank(title.getMainTitle(), "--"))
+                .limit(MAX_HIGHLIGHTS)
+                .collect(Collectors.toList());
+        String summary = titles.isEmpty() ? "尚未产出标题候选" : "已生成 " + titles.size() + " 个标题候选";
+        return ArticleTaskMemoryVO.NodeSnapshotVO.builder()
+                .node(node)
+                .phase(phase)
+                .label("标题候选生成")
+                .status(status)
+                .summary(summary)
+                .detail(state != null && state.getTitleOptions() != null
+                        ? "候选标题总数=" + state.getTitleOptions().size()
+                        : null)
+                .highlights(titles.isEmpty() ? null : titles)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    private ArticleTaskMemoryVO.NodeSnapshotVO buildOutlineNodeSnapshot(String node,
+                                                                        String phase,
+                                                                        String status,
+                                                                        ArticleState state) {
+        List<ArticleState.OutlineSection> sections = state == null || state.getOutline() == null
+                ? Collections.emptyList()
+                : state.getOutline().getSections();
+        List<String> highlights = sections.stream()
+                .filter(Objects::nonNull)
+                .map(section -> section.getSection() + "." + firstNonBlank(section.getTitle(), "未命名章节"))
+                .limit(MAX_HIGHLIGHTS)
+                .collect(Collectors.toList());
+        return ArticleTaskMemoryVO.NodeSnapshotVO.builder()
+                .node(node)
+                .phase(phase)
+                .label("文章大纲生成")
+                .status(status)
+                .summary(sections.isEmpty() ? "尚未产出大纲章节" : "已生成 " + sections.size() + " 个大纲章节")
+                .detail(sections.isEmpty() ? null : "大纲首章=" + firstNonBlank(sections.get(0).getTitle(), "未命名章节"))
+                .highlights(highlights.isEmpty() ? null : highlights)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    private ArticleTaskMemoryVO.NodeSnapshotVO buildContentNodeSnapshot(String node,
+                                                                        String phase,
+                                                                        String status,
+                                                                        ArticleState state) {
+        String content = state == null ? null : firstNonBlank(state.getContent(), state.getFullContent());
+        List<String> highlights = extractHighlightsFromContent(content);
+        int length = content == null ? 0 : content.length();
+        return ArticleTaskMemoryVO.NodeSnapshotVO.builder()
+                .node(node)
+                .phase(phase)
+                .label("正文生成")
+                .status(status)
+                .summary(length > 0 ? "已生成正文，长度约 " + length + " 字符" : "正文尚未生成")
+                .detail(length > 0 ? shorten(content, 120) : null)
+                .highlights(highlights.isEmpty() ? null : highlights)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    private ArticleTaskMemoryVO.NodeSnapshotVO buildImageRequirementSnapshot(String node,
+                                                                             String phase,
+                                                                             String status,
+                                                                             ArticleState state) {
+        List<ArticleState.ImageRequirement> requirements = state == null || state.getImageRequirements() == null
+                ? Collections.emptyList()
+                : state.getImageRequirements();
+        List<String> highlights = requirements.stream()
+                .filter(Objects::nonNull)
+                .map(req -> firstNonBlank(req.getImageSource(), "UNKNOWN") + " / "
+                        + firstNonBlank(req.getSectionTitle(), firstNonBlank(req.getKeywords(), "未命名图片")))
+                .limit(MAX_HIGHLIGHTS)
+                .collect(Collectors.toList());
+        return ArticleTaskMemoryVO.NodeSnapshotVO.builder()
+                .node(node)
+                .phase(phase)
+                .label("图片需求分析")
+                .status(status)
+                .summary(requirements.isEmpty() ? "未识别到图片需求" : "已识别 " + requirements.size() + " 条图片需求")
+                .detail(requirements.isEmpty() ? null : "首个来源=" + firstNonBlank(requirements.get(0).getImageSource(), "--"))
+                .highlights(highlights.isEmpty() ? null : highlights)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    private ArticleTaskMemoryVO.NodeSnapshotVO buildImageGenerationSnapshot(String node,
+                                                                            String phase,
+                                                                            String status,
+                                                                            ArticleState state) {
+        List<ArticleState.ImageResult> images = state == null || state.getImages() == null
+                ? Collections.emptyList()
+                : state.getImages();
+        List<String> highlights = images.stream()
+                .filter(Objects::nonNull)
+                .map(image -> firstNonBlank(image.getMethod(), "UNKNOWN") + " / "
+                        + firstNonBlank(image.getSectionTitle(), firstNonBlank(image.getKeywords(), "未命名图片")))
+                .limit(MAX_HIGHLIGHTS)
+                .collect(Collectors.toList());
+        return ArticleTaskMemoryVO.NodeSnapshotVO.builder()
+                .node(node)
+                .phase(phase)
+                .label("图片生成")
+                .status(status)
+                .summary(images.isEmpty() ? "尚未生成图片" : "已生成 " + images.size() + " 张图片")
+                .detail(images.isEmpty() ? null : "首张图片方法=" + firstNonBlank(images.get(0).getMethod(), "--"))
+                .highlights(highlights.isEmpty() ? null : highlights)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    private ArticleTaskMemoryVO.NodeSnapshotVO buildMergeSnapshot(String node,
+                                                                  String phase,
+                                                                  String status,
+                                                                  ArticleState state) {
+        String fullContent = state == null ? null : state.getFullContent();
+        List<String> highlights = extractHighlightsFromContent(fullContent);
+        return ArticleTaskMemoryVO.NodeSnapshotVO.builder()
+                .node(node)
+                .phase(phase)
+                .label("图文合并")
+                .status(status)
+                .summary(isBlank(fullContent) ? "尚未生成最终图文" : "图文已合并完成")
+                .detail(isBlank(fullContent) ? null : shorten(fullContent, 120))
+                .highlights(highlights.isEmpty() ? null : highlights)
                 .timestamp(System.currentTimeMillis())
                 .build();
     }
@@ -682,6 +880,17 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         return value == null ? 0 : value;
     }
 
+    private String shorten(String text, int maxLength) {
+        if (isBlank(text)) {
+            return null;
+        }
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        return normalized.substring(0, maxLength) + "...";
+    }
+
     private String firstNonBlank(String candidate, String fallback) {
         return !isBlank(candidate) ? candidate : fallback;
     }
@@ -697,5 +906,6 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         private String imageStrategy;
         private List<String> qualitySignals;
         private List<String> manualActions;
+        private List<ArticleTaskMemoryVO.NodeSnapshotVO> nodeSnapshots;
     }
 }

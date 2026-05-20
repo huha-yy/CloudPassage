@@ -172,6 +172,40 @@
           <div v-else class="empty-text">暂无质量信号</div>
         </div>
 
+        <div class="memory-group">
+          <div class="group-title">
+            <DeploymentUnitOutlined />
+            <span>节点快照</span>
+          </div>
+          <div v-if="memory.nodeSnapshots?.length" class="event-list">
+            <div
+              v-for="(item, index) in memory.nodeSnapshots"
+              :key="`${item.node || 'snapshot'}-${index}`"
+              class="event-item snapshot"
+            >
+              <div class="event-top">
+                <div class="snapshot-heading">
+                  <span class="event-label">{{ item.label || getNodeText(item.node) }}</span>
+                  <a-tag :color="getSnapshotStatusColor(item.status)">{{ item.status || '--' }}</a-tag>
+                </div>
+                <span class="event-time">{{ formatTimestamp(item.timestamp) }}</span>
+              </div>
+              <div class="meta-line">
+                <span>阶段：{{ getPhaseText(item.phase) }}</span>
+                <span>节点：{{ getNodeText(item.node) }}</span>
+              </div>
+              <div v-if="item.summary" class="event-detail">{{ item.summary }}</div>
+              <div v-if="item.detail" class="event-detail secondary">{{ item.detail }}</div>
+              <div v-if="item.highlights?.length" class="chip-list">
+                <a-tag v-for="highlight in item.highlights" :key="highlight" color="gold">
+                  {{ highlight }}
+                </a-tag>
+              </div>
+            </div>
+          </div>
+          <div v-else class="empty-text">暂无节点快照</div>
+        </div>
+
         <div v-if="memory.recentErrorMessage" class="memory-group">
           <div class="group-title error">
             <CloseCircleOutlined />
@@ -203,6 +237,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   DatabaseOutlined,
+  DeploymentUnitOutlined,
   HistoryOutlined,
   PictureOutlined,
   RadarChartOutlined,
@@ -318,6 +353,19 @@ const formatTimestamp = (value?: number) => {
     return '--'
   }
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
+}
+
+const getSnapshotStatusColor = (status?: string) => {
+  switch (status) {
+    case 'SUCCESS':
+      return 'green'
+    case 'FAILED':
+      return 'red'
+    case 'RUNNING':
+      return 'processing'
+    default:
+      return 'default'
+  }
 }
 
 watch(
@@ -548,6 +596,10 @@ onBeforeUnmount(() => {
   &.signal {
     background: rgba(59, 130, 246, 0.04);
   }
+
+  &.snapshot {
+    background: rgba(245, 158, 11, 0.06);
+  }
 }
 
 .event-top {
@@ -569,12 +621,23 @@ onBeforeUnmount(() => {
   color: var(--color-text-muted);
 }
 
+.snapshot-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .event-detail {
   margin-top: 8px;
   font-size: 13px;
   line-height: 1.7;
   color: var(--color-text-secondary);
   white-space: pre-wrap;
+
+  &.secondary {
+    color: var(--color-text-muted);
+  }
 }
 
 .empty-text {

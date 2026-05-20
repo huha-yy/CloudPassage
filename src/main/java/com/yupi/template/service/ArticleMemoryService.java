@@ -23,5 +23,7 @@ public interface ArticleMemoryService {
 
     void recordTaskResume(String taskId, String phase, String actionType, String node);
 
+    void recordNodeSnapshot(String taskId, String phase, String node, String status, ArticleState state);
+
     ArticleTaskMemoryVO getTaskMemory(String taskId);
 }

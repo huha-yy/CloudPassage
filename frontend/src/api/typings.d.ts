@@ -116,6 +116,7 @@
     imageStrategy?: MemoryImageStrategyVO
     qualitySignals?: MemorySignalVO[]
     manualActions?: MemoryActionVO[]
+    nodeSnapshots?: NodeSnapshotVO[]
     updatedAt?: number
   }
 
@@ -148,6 +149,17 @@
     detail?: string
     phase?: string
     node?: string
+    timestamp?: number
+  }
+
+  type NodeSnapshotVO = {
+    node?: string
+    phase?: string
+    label?: string
+    status?: string
+    summary?: string
+    detail?: string
+    highlights?: string[]
     timestamp?: number
   }
 

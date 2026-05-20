@@ -59,7 +59,9 @@ public class ArticleAsyncService {
                     "workflow_phase_1", "Article task entered title generation");
 
             articleGenerationWorkflowService.generateTitles(state,
-                    event -> articleWorkflowEventService.publishWorkflowEvent(taskId, state, event));
+                    event -> handleWorkflowEvent(taskId, state, event));
+            articleMemoryService.recordNodeSnapshot(taskId, ArticlePhaseEnum.TITLE_GENERATING.getValue(),
+                    "workflow_phase_1", "SUCCESS", state);
 
             articleService.saveTitleOptions(taskId, state.getTitleOptions());
             articleService.updatePhase(taskId, ArticlePhaseEnum.TITLE_SELECTING);
@@ -94,7 +96,9 @@ public class ArticleAsyncService {
                     "workflow_phase_2", "Outline workflow restored from article state");
 
             articleGenerationWorkflowService.generateOutline(state,
-                    event -> articleWorkflowEventService.publishWorkflowEvent(taskId, state, event));
+                    event -> handleWorkflowEvent(taskId, state, event));
+            articleMemoryService.recordNodeSnapshot(taskId, ArticlePhaseEnum.OUTLINE_GENERATING.getValue(),
+                    "workflow_phase_2", "SUCCESS", state);
 
             Article articleToUpdate = articleService.getByTaskId(taskId);
             articleToUpdate.setOutline(GsonUtils.toJson(state.getOutline().getSections()));
@@ -132,7 +136,9 @@ public class ArticleAsyncService {
                     "workflow_phase_3", "Content workflow restored from article state");
 
             articleGenerationWorkflowService.generateContent(state,
-                    event -> articleWorkflowEventService.publishWorkflowEvent(taskId, state, event));
+                    event -> handleWorkflowEvent(taskId, state, event));
+            articleMemoryService.recordNodeSnapshot(taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(),
+                    "workflow_phase_3", "SUCCESS", state);
 
             articleService.saveArticleContent(taskId, state);
             articleService.updateArticleStatus(taskId, ArticleStatusEnum.COMPLETED, null);
@@ -191,6 +197,29 @@ public class ArticleAsyncService {
         articleWorkflowEventService.publishSystemEvent(taskId, state, SseMessageTypeEnum.ERROR,
                 state.getPhase(), state.getProgress(), payload("message", e.getMessage()));
         articleWorkflowEventService.complete(taskId);
+    }
+
+    private void handleWorkflowEvent(String taskId, ArticleState state, com.yupi.template.model.dto.article.ArticleWorkflowEvent event) {
+        articleWorkflowEventService.publishWorkflowEvent(taskId, state, event);
+        if (event == null || event.getType() == null) {
+            return;
+        }
+        switch (event.getType()) {
+            case AGENT1_COMPLETE -> articleMemoryService.recordNodeSnapshot(
+                    taskId, ArticlePhaseEnum.TITLE_GENERATING.getValue(), "agent1_generate_titles", "SUCCESS", state);
+            case AGENT2_COMPLETE -> articleMemoryService.recordNodeSnapshot(
+                    taskId, ArticlePhaseEnum.OUTLINE_GENERATING.getValue(), "agent2_generate_outline", "SUCCESS", state);
+            case AGENT3_COMPLETE -> articleMemoryService.recordNodeSnapshot(
+                    taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "agent3_generate_content", "SUCCESS", state);
+            case AGENT4_COMPLETE -> articleMemoryService.recordNodeSnapshot(
+                    taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "agent4_analyze_image_requirements", "SUCCESS", state);
+            case AGENT5_COMPLETE -> articleMemoryService.recordNodeSnapshot(
+                    taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "agent5_generate_images", "SUCCESS", state);
+            case MERGE_COMPLETE -> articleMemoryService.recordNodeSnapshot(
+                    taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "agent6_merge_content", "SUCCESS", state);
+            default -> {
+            }
+        }
     }
 
     private Map<String, Object> payload(String key, Object value) {
