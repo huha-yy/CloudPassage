@@ -1026,6 +1026,13 @@ const stopExecutionStatsPolling = () => {
   }
 }
 
+const clearActiveTaskSession = async () => {
+  closeCurrentConnection()
+  resetRuntimeState()
+  taskId.value = ''
+  await forgetTask()
+}
+
 const loadExecutionStats = async (activeTaskId: string, silent = true) => {
   if (!activeTaskId) {
     return
@@ -1076,14 +1083,11 @@ const resetRuntimeState = () => {
 }
 
 const resetCreate = async () => {
-  closeCurrentConnection()
-  resetRuntimeState()
+  await clearActiveTaskSession()
   currentPhase.value = 'INPUT'
   topic.value = ''
   selectedStyle.value = ''
   selectedImageMethods.value = []
-  taskId.value = ''
-  await forgetTask()
 }
 
 const setUiByPhase = (phase?: string, status?: string, progress?: number) => {
@@ -1185,16 +1189,24 @@ const shouldReconnectStream = (snapshot: API.ArticleTaskSnapshotVO) => {
   return ['TITLE_GENERATING', 'OUTLINE_GENERATING', 'CONTENT_GENERATING'].includes(snapshot.phase || '')
 }
 
+const isTaskSnapshotMissing = (error: unknown) => {
+  const code = (error as { response?: { data?: { code?: number } } })?.response?.data?.code
+  return code === 40400
+}
+
 const restoreTask = async (restoreTaskId: string, silent = false) => {
   if (!restoreTaskId) {
     return
   }
 
   try {
+    closeCurrentConnection()
+    stopExecutionStatsPolling()
     const res = await getTaskSnapshot({ taskId: restoreTaskId })
     const snapshot = res.data.data
     if (!snapshot) {
-      await forgetTask()
+      await clearActiveTaskSession()
+      addLog(`Cleared invalid task reference: ${restoreTaskId}`, 'warning')
       return
     }
 
@@ -1216,9 +1228,16 @@ const restoreTask = async (restoreTaskId: string, silent = false) => {
     }
   } catch (error) {
     console.error('Failed to restore task:', error)
-    await forgetTask()
+    await clearActiveTaskSession()
+    if (isTaskSnapshotMissing(error)) {
+      addLog(`Stale task removed: ${restoreTaskId}`, 'warning')
+    }
     if (!silent) {
-      message.error('Failed to restore task, please create a new one')
+      message.error(
+        isTaskSnapshotMissing(error)
+          ? 'Previous task no longer exists, please create a new one'
+          : 'Failed to restore task, please create a new one',
+      )
     }
   }
 }
@@ -1245,8 +1264,7 @@ const startCreate = async () => {
     return
   }
 
-  closeCurrentConnection()
-  resetRuntimeState()
+  await clearActiveTaskSession()
   currentPhase.value = 'TITLE_GENERATING'
   isCreating.value = true
   addLog('Creating article task...', 'info')

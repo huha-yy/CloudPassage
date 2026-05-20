@@ -83,8 +83,11 @@ public class ArticleNodeLogServiceImpl implements ArticleNodeLogService {
                 logs.add(logVO);
                 continue;
             }
-            NodeExecutionLogVO logVO = GsonUtils.fromJson(
-                    GsonUtils.toJson(value),
+            String json = value instanceof String
+                    ? (String) value
+                    : GsonUtils.toJson(value);
+            NodeExecutionLogVO logVO = GsonUtils.fromJsonSafe(
+                    json,
                     new TypeToken<NodeExecutionLogVO>() {
                     }
             );

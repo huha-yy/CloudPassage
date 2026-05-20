@@ -1,5 +1,9 @@
 package com.yupi.template.service.impl;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.yupi.template.mapper.ArticleMapper;
@@ -400,7 +404,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                 || memory.getImageStrategy() == null || memory.getQualitySignals() == null
                 || memory.getManualActions() == null || memory.getNodeSnapshots() == null) {
             String json = rawCached instanceof String ? (String) rawCached : GsonUtils.toJson(rawCached);
-            LegacyTaskMemoryVO legacy = GsonUtils.fromJsonSafe(json, LegacyTaskMemoryVO.class);
+            LegacyTaskMemoryVO legacy = buildLegacyMemory(json);
             if (legacy != null) {
                 if (memory.getOutlineSummary() == null && !isBlank(legacy.getOutlineSummary())) {
                     memory.setOutlineSummary(buildPlainSummary(legacy.getOutlineSummary(), "legacy_outline"));
@@ -438,6 +442,67 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             }
         }
         touch(memory);
+    }
+
+    private LegacyTaskMemoryVO buildLegacyMemory(String json) {
+        if (isBlank(json)) {
+            return null;
+        }
+        try {
+            JsonElement rootElement = JsonParser.parseString(json);
+            if (!rootElement.isJsonObject()) {
+                return null;
+            }
+            JsonObject root = rootElement.getAsJsonObject();
+            LegacyTaskMemoryVO legacy = new LegacyTaskMemoryVO();
+            legacy.setOutlineSummary(getPrimitiveString(root, "outlineSummary"));
+            legacy.setContentSummary(getPrimitiveString(root, "contentSummary"));
+            legacy.setImageStrategy(getPrimitiveString(root, "imageStrategy"));
+            legacy.setQualitySignals(getStringList(root, "qualitySignals"));
+            legacy.setManualActions(getStringList(root, "manualActions"));
+            legacy.setNodeSnapshots(getNodeSnapshotList(root, "nodeSnapshots"));
+            return legacy;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String getPrimitiveString(JsonObject root, String fieldName) {
+        JsonElement element = root.get(fieldName);
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+            return element.getAsString();
+        }
+        return null;
+    }
+
+    private List<String> getStringList(JsonObject root, String fieldName) {
+        JsonElement element = root.get(fieldName);
+        if (element == null || !element.isJsonArray()) {
+            return null;
+        }
+        JsonArray array = element.getAsJsonArray();
+        List<String> result = new ArrayList<>();
+        for (JsonElement item : array) {
+            if (item != null && item.isJsonPrimitive() && item.getAsJsonPrimitive().isString()) {
+                result.add(item.getAsString());
+            }
+        }
+        return result;
+    }
+
+    private List<ArticleTaskMemoryVO.NodeSnapshotVO> getNodeSnapshotList(JsonObject root, String fieldName) {
+        JsonElement element = root.get(fieldName);
+        if (element == null || !element.isJsonArray()) {
+            return null;
+        }
+        return GsonUtils.fromJsonSafe(
+                element.toString(),
+                new TypeToken<List<ArticleTaskMemoryVO.NodeSnapshotVO>>() {
+                }
+        );
     }
 
     private void persist(ArticleTaskMemoryVO memory) {
