@@ -1,4 +1,4 @@
-﻿package com.yupi.template.service.impl;
+package com.yupi.template.service.impl;
 
 import cn.hutool.core.util.IdUtil;
 import com.google.gson.reflect.TypeToken;
@@ -177,6 +177,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setCompletedTime(LocalDateTime.now());
         this.updateById(article);
         log.info("Article content saved, taskId={}", taskId);
+    }
+
+    @Override
+    public void saveTaskSnapshot(ArticleState state, ArticleStatusEnum status, ArticlePhaseEnum phase, String errorMessage) {
+        articleTaskSnapshotService.saveSnapshot(state, status, phase, errorMessage);
     }
 
     @Override

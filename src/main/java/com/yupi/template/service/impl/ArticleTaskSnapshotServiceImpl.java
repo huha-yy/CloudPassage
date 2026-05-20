@@ -1,4 +1,4 @@
-﻿package com.yupi.template.service.impl;
+package com.yupi.template.service.impl;
 
 import com.google.gson.reflect.TypeToken;
 import com.yupi.template.model.dto.article.ArticleState;

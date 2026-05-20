@@ -1,4 +1,4 @@
-﻿package com.yupi.template.service;
+package com.yupi.template.service;
 
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.service.IService;
@@ -37,6 +37,8 @@ public interface ArticleService extends IService<Article> {
     void updateArticleStatus(String taskId, ArticleStatusEnum status, String errorMessage);
 
     void saveArticleContent(String taskId, ArticleState state);
+
+    void saveTaskSnapshot(ArticleState state, ArticleStatusEnum status, ArticlePhaseEnum phase, String errorMessage);
 
     void confirmTitle(String taskId, String mainTitle, String subTitle, String userDescription, User loginUser);
 

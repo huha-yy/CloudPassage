@@ -1,4 +1,4 @@
-﻿package com.yupi.template.service;
+package com.yupi.template.service;
 
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
 import com.google.gson.reflect.TypeToken;

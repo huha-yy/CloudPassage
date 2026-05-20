@@ -1,6 +1,5 @@
-﻿package com.yupi.template.service.impl;
+package com.yupi.template.service.impl;
 
-import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.yupi.template.service.ArticleStructuredOutputService;
 import com.yupi.template.utils.GsonUtils;
@@ -50,7 +49,7 @@ public class ArticleStructuredOutputServiceImpl implements ArticleStructuredOutp
                     throw new RuntimeException(resultName + " validation failed");
                 }
                 return result;
-            } catch (JsonSyntaxException | RuntimeException e) {
+            } catch (RuntimeException e) {
                 lastException = new RuntimeException(resultName + " parse failed", e);
                 log.warn("{} parse attempt {} failed: {}", resultName, attempt, e.getMessage());
                 if (attempt < MAX_ATTEMPTS) {

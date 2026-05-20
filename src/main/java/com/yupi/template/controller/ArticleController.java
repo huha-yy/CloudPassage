@@ -1,4 +1,4 @@
-﻿package com.yupi.template.controller;
+package com.yupi.template.controller;
 
 import com.mybatisflex.core.paginate.Page;
 import com.yupi.template.common.BaseResponse;

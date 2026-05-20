@@ -99,4 +99,16 @@ public enum SseMessageTypeEnum {
     public String getStreamingPrefix() {
         return this.value + ":";
     }
+
+    public static SseMessageTypeEnum fromValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        for (SseMessageTypeEnum typeEnum : values()) {
+            if (typeEnum.value.equals(value)) {
+                return typeEnum;
+            }
+        }
+        return null;
+    }
 }

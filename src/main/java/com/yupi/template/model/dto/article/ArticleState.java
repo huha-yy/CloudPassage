@@ -1,4 +1,4 @@
-﻿package com.yupi.template.model.dto.article;
+package com.yupi.template.model.dto.article;
 
 import lombok.Data;
 

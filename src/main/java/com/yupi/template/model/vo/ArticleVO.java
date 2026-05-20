@@ -1,4 +1,4 @@
-﻿package com.yupi.template.model.vo;
+package com.yupi.template.model.vo;
 
 import com.google.gson.reflect.TypeToken;
 import com.yupi.template.model.entity.Article;
