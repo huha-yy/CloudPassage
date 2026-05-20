@@ -12,6 +12,7 @@ import com.yupi.template.model.dto.article.ArticleConfirmOutlineRequest;
 import com.yupi.template.model.dto.article.ArticleConfirmTitleRequest;
 import com.yupi.template.model.dto.article.ArticleCreateRequest;
 import com.yupi.template.model.dto.article.ArticleQueryRequest;
+import com.yupi.template.model.dto.article.ArticleRetryNodeRequest;
 import com.yupi.template.model.dto.article.ArticleResumeRequest;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.User;
@@ -208,6 +209,22 @@ public class ArticleController {
 
         User loginUser = userService.getLoginUser(httpServletRequest);
         ArticleTaskSnapshotVO snapshot = articleService.resumeTask(request.getTaskId(), loginUser);
+        articleAsyncService.resumeTask(request.getTaskId());
+        return ResultUtils.success(snapshot);
+    }
+
+    @PostMapping("/retry-node")
+    @Operation(summary = "Retry a failed node from its mapped phase")
+    public BaseResponse<ArticleTaskSnapshotVO> retryNode(@RequestBody ArticleRetryNodeRequest request,
+                                                         HttpServletRequest httpServletRequest) {
+        ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(request.getTaskId() == null || request.getTaskId().trim().isEmpty(),
+                ErrorCode.PARAMS_ERROR, "Task id cannot be empty");
+        ThrowUtils.throwIf(request.getNode() == null || request.getNode().trim().isEmpty(),
+                ErrorCode.PARAMS_ERROR, "Node cannot be empty");
+
+        User loginUser = userService.getLoginUser(httpServletRequest);
+        ArticleTaskSnapshotVO snapshot = articleService.retryNode(request.getTaskId(), request.getNode(), loginUser);
         articleAsyncService.resumeTask(request.getTaskId());
         return ResultUtils.success(snapshot);
     }

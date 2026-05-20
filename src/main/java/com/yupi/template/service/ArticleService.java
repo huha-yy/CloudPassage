@@ -51,4 +51,6 @@ public interface ArticleService extends IService<Article> {
     List<ArticleState.OutlineSection> aiModifyOutline(String taskId, String modifySuggestion, User loginUser);
 
     ArticleTaskSnapshotVO resumeTask(String taskId, User loginUser);
+
+    ArticleTaskSnapshotVO retryNode(String taskId, String node, User loginUser);
 }

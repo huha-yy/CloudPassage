@@ -451,6 +451,16 @@
                     <span>{{ item.time }}</span>
                   </div>
                   <div v-if="item.message" class="mini-timeline-message">{{ item.message }}</div>
+                  <a-button
+                    v-if="item.status === 'FAILED' && item.node"
+                    size="small"
+                    type="link"
+                    class="retry-node-btn"
+                    :loading="confirmLoading"
+                    @click="handleRetryNode(item.node)"
+                  >
+                    重试该节点
+                  </a-button>
                 </div>
               </div>
             </div>
@@ -691,6 +701,7 @@ import {
   getTaskSnapshot,
   getExecutionLogs,
   resumeTask,
+  retryNode,
 } from '@/api/articleController'
 import { closeSSE, connectSSE, type SSEMessage } from '@/utils/sse'
 import {
@@ -723,6 +734,7 @@ interface TimelineLogViewModel {
   status: string
   duration: number
   time: string
+  node?: string
   phase?: string
   message?: string
 }
@@ -893,6 +905,7 @@ const recentNodeTimeline = computed<TimelineLogViewModel[]>(() => {
       status: log.status || 'PENDING',
       duration: log.elapsedMs ?? 0,
       time: log.timestamp ? formatLogTime(log.timestamp) : '--',
+      node: log.node || '',
       phase: getPhaseDisplayName(log.phase || ''),
       message: log.message || '',
     }))
@@ -1577,6 +1590,40 @@ const handleResumeTask = async () => {
   } catch (error) {
     const err = error as Error
     message.error(err.message || '恢复任务失败')
+  } finally {
+    confirmLoading.value = false
+  }
+}
+
+const handleRetryNode = async (node?: string) => {
+  if (!taskId.value || !node) {
+    message.warning('当前节点暂不支持重试')
+    return
+  }
+
+  try {
+    confirmLoading.value = true
+    const activeTaskId = taskId.value
+    const res = await retryNode({
+      taskId: activeTaskId,
+      node,
+    })
+    const snapshot = res.data.data
+    if (snapshot) {
+      applySnapshot(snapshot)
+    }
+    errorVisible.value = false
+    errorMessage.value = ''
+    lastFailedTaskId.value = ''
+    isCreating.value = true
+    await rememberTask(activeTaskId)
+    addLog(`Retry node: ${getNodeDisplayName(node)}`, 'info')
+    startExecutionStatsPolling(activeTaskId)
+    connectToTaskStream(activeTaskId, true)
+    message.success('已发起节点重试')
+  } catch (error) {
+    const err = error as Error
+    message.error(err.message || '节点重试失败')
   } finally {
     confirmLoading.value = false
   }
@@ -2633,6 +2680,15 @@ onBeforeUnmount(() => {
     &.error {
       color: var(--color-error);
     }
+  }
+
+  .retry-node-btn.ant-btn-link {
+    padding: 0;
+    margin-top: 8px;
+    height: auto;
+    color: #d48806;
+    font-size: 12px;
+    font-weight: 600;
   }
 }
 

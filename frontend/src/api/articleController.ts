@@ -103,6 +103,21 @@ export async function resumeTask(
   })
 }
 
+/** 重试失败节点 POST /article/retry-node */
+export async function retryNode(
+  body: API.ArticleRetryNodeRequest,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseArticleTaskSnapshotVO>('/article/retry-node', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  })
+}
+
 /** 删除文章 POST /article/delete */
 export async function deleteArticle(body: API.DeleteRequest, options?: { [key: string]: any }) {
   return request<API.BaseResponseBoolean>('/article/delete', {

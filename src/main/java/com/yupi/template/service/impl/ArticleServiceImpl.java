@@ -364,6 +364,33 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         return articleTaskSnapshotService.getSnapshot(taskId, article);
     }
 
+    @Override
+    public ArticleTaskSnapshotVO retryNode(String taskId, String node, User loginUser) {
+        ThrowUtils.throwIf(node == null || node.isBlank(), ErrorCode.PARAMS_ERROR, "Node cannot be empty");
+
+        Article article = getArticleWithPermission(taskId, loginUser);
+        ThrowUtils.throwIf(article == null, ErrorCode.NOT_FOUND_ERROR, "Article not found");
+
+        ArticleTaskSnapshotVO snapshot = articleTaskSnapshotService.getSnapshot(taskId, article);
+        ThrowUtils.throwIf(snapshot == null, ErrorCode.NOT_FOUND_ERROR, "Task snapshot not found");
+
+        String mappedPhase = mapRetryPhase(node);
+        ThrowUtils.throwIf(mappedPhase == null, ErrorCode.OPERATION_ERROR, "Current node does not support retry");
+
+        String snapshotPhase = snapshot.getPhase();
+        ThrowUtils.throwIf(snapshotPhase == null, ErrorCode.OPERATION_ERROR, "Current task phase cannot be resolved");
+
+        boolean samePhase = mappedPhase.equals(snapshotPhase);
+        boolean phaseEscalation = ArticlePhaseEnum.CONTENT_GENERATING.getValue().equals(snapshotPhase)
+                && ArticlePhaseEnum.OUTLINE_GENERATING.getValue().equals(mappedPhase);
+        ThrowUtils.throwIf(!samePhase && !phaseEscalation,
+                ErrorCode.OPERATION_ERROR, "Retry node does not belong to current recoverable phase");
+
+        log.info("Retry node requested, taskId={}, node={}, mappedPhase={}, currentPhase={}",
+                taskId, node, mappedPhase, snapshotPhase);
+        return resumeTask(taskId, loginUser);
+    }
+
     private Article getArticleWithPermission(String taskId, User loginUser) {
         Article article = getByTaskId(taskId);
         ThrowUtils.throwIf(article == null, ErrorCode.NOT_FOUND_ERROR, "Article not found");
@@ -419,5 +446,17 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private boolean isVipOrAdmin(User user) {
         return ADMIN_ROLE.equals(user.getUserRole()) || VIP_ROLE.equals(user.getUserRole());
+    }
+
+    private String mapRetryPhase(String node) {
+        return switch (node) {
+            case "workflow_phase_1", "agent1_generate_titles" -> ArticlePhaseEnum.TITLE_GENERATING.getValue();
+            case "workflow_phase_2", "agent2_generate_outline", "ai_modify_outline" ->
+                    ArticlePhaseEnum.OUTLINE_GENERATING.getValue();
+            case "workflow_phase_3", "agent3_generate_content", "agent4_analyze_image_requirements",
+                    "agent5_generate_images", "agent6_merge_content" ->
+                    ArticlePhaseEnum.CONTENT_GENERATING.getValue();
+            default -> null;
+        };
     }
 }

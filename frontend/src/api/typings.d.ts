@@ -65,6 +65,11 @@
     taskId?: string
   }
 
+  type ArticleRetryNodeRequest = {
+    taskId?: string
+    node?: string
+  }
+
   type ArticleQueryRequest = {
     pageNum?: number
     pageSize?: number
