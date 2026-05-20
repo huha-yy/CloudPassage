@@ -776,21 +776,21 @@ const quota = computed(() => loginUserStore.loginUser.quota ?? 0)
 const hasQuota = computed(() => checkHasQuota(loginUserStore.loginUser))
 
 const agentSteps = [
-  { title: 'Title', description: 'Generate candidate titles from the topic' },
-  { title: 'Outline', description: 'Plan the article structure and key points' },
-  { title: 'Content', description: 'Stream the article draft into the preview area' },
-  { title: 'Images', description: 'Analyze image requirements for the article' },
-  { title: 'Render', description: 'Generate and upload article images' },
-  { title: 'Merge', description: 'Merge text and images into the final article' },
+  { title: '标题', description: '根据选题生成多个可选标题方案' },
+  { title: '大纲', description: '规划文章结构与每个章节的关键要点' },
+  { title: '正文', description: '流式生成文章草稿并实时展示内容' },
+  { title: '配图', description: '分析文章需要的图片类型与数量' },
+  { title: '出图', description: '生成并上传文章配图资源' },
+  { title: '合成', description: '将正文与图片合并为最终文章' },
 ]
 
 const exampleTopics = [
-  'How AI will change work in 2026',
-  'How developers can improve competitiveness',
-  'Pros and cons of remote work',
-  'How to build deep thinking skills',
-  'New energy vehicle trend analysis',
-  'Healthy eating guide',
+  '2026 年 AI 将如何改变职场',
+  '开发者如何提升个人竞争力',
+  '远程办公的利与弊分析',
+  '如何系统培养深度思考能力',
+  '新能源汽车行业趋势分析',
+  '健康饮食与生活方式指南',
 ]
 
 const currentPhase = ref<UiPhase>('INPUT')
@@ -1206,7 +1206,7 @@ const restoreTask = async (restoreTaskId: string, silent = false) => {
     const snapshot = res.data.data
     if (!snapshot) {
       await clearActiveTaskSession()
-      addLog(`Cleared invalid task reference: ${restoreTaskId}`, 'warning')
+      addLog(`已清理失效任务引用：${restoreTaskId}`, 'warning')
       return
     }
 
@@ -1217,26 +1217,26 @@ const restoreTask = async (restoreTaskId: string, silent = false) => {
       startExecutionStatsPolling(restoreTaskId)
     }
     lastFailedTaskId.value = snapshot.status === 'FAILED' ? restoreTaskId : ''
-    addLog(`Task restored: ${restoreTaskId}`, 'info')
+    addLog(`已恢复任务：${restoreTaskId}`, 'info')
 
     if (shouldReconnectStream(snapshot)) {
       connectToTaskStream(restoreTaskId, true)
     }
 
     if (!silent) {
-      message.success('Previous task restored')
+      message.success('已恢复上次任务')
     }
   } catch (error) {
     console.error('Failed to restore task:', error)
     await clearActiveTaskSession()
     if (isTaskSnapshotMissing(error)) {
-      addLog(`Stale task removed: ${restoreTaskId}`, 'warning')
+      addLog(`已移除过期任务：${restoreTaskId}`, 'warning')
     }
     if (!silent) {
       message.error(
         isTaskSnapshotMissing(error)
-          ? 'Previous task no longer exists, please create a new one'
-          : 'Failed to restore task, please create a new one',
+          ? '上次任务已不存在，请重新创建新任务'
+          : '恢复任务失败，请重新创建新任务',
       )
     }
   }
@@ -1250,24 +1250,24 @@ const connectToTaskStream = (activeTaskId: string, silent = false) => {
     onComplete: handleSSEComplete,
   })
   if (!silent) {
-    addLog('Realtime connection established', 'info')
+    addLog('已建立实时连接', 'info')
   }
 }
 
 const startCreate = async () => {
   if (!topic.value.trim()) {
-    message.warning('Please enter a topic')
+    message.warning('请输入文章选题')
     return
   }
   if (!hasQuota.value) {
-    message.error('No quota left for creating an article')
+    message.error('当前配额不足，无法创建文章')
     return
   }
 
   await clearActiveTaskSession()
   currentPhase.value = 'TITLE_GENERATING'
   isCreating.value = true
-  addLog('Creating article task...', 'info')
+  addLog('正在创建文章任务...', 'info')
 
   try {
     const res = await createArticle({
@@ -1278,17 +1278,17 @@ const startCreate = async () => {
     })
     const newTaskId = res.data.data
     if (!newTaskId) {
-      throw new Error('Create task failed: task ID is missing')
+      throw new Error('创建任务失败：未返回任务 ID')
     }
 
     await rememberTask(newTaskId)
     startExecutionStatsPolling(newTaskId)
-    addLog(`Task created: ${newTaskId}`, 'success')
+    addLog(`任务已创建：${newTaskId}`, 'success')
     await loginUserStore.fetchLoginUser()
     connectToTaskStream(newTaskId)
   } catch (error) {
     const err = error as Error
-    message.error(err.message || 'Create task failed')
+    message.error(err.message || '创建任务失败')
     isCreating.value = false
     currentPhase.value = 'INPUT'
   }
@@ -1397,14 +1397,14 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       currentPhase.value = 'TITLE_GENERATING'
       currentStep.value = 0
       isCreating.value = true
-      addLog('Title generation completed', 'success')
+      addLog('标题方案生成完成', 'success')
       break
     case 'TITLES_GENERATED':
       currentPhase.value = 'TITLE_SELECTING'
       currentStep.value = 1
       isCreating.value = false
       titleOptions.value = normalizeTitleOptions(payload.titleOptions as API.TitleOption[])
-      addLog(`Received ${titleOptions.value.length} title options`, 'success')
+      addLog(`已收到 ${titleOptions.value.length} 个标题方案`, 'success')
       break
     case 'AGENT2_STREAMING': {
       currentPhase.value = 'OUTLINE_GENERATING'
@@ -1423,7 +1423,7 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       isOutlineStreaming.value = false
       outline.value = (payload.outline as API.OutlineSection[]) || []
       outlineRaw.value = JSON.stringify({ sections: outline.value })
-      addLog('Outline generated, waiting for confirmation', 'success')
+      addLog('大纲已生成，等待确认', 'success')
       break
     case 'AGENT2_COMPLETE':
       break
@@ -1440,13 +1440,13 @@ const handleSSEMessage = async (msg: SSEMessage) => {
     case 'AGENT3_COMPLETE':
       isStreaming.value = false
       currentStep.value = 3
-      addLog('Content generated, analyzing image requirements', 'success')
+      addLog('正文已生成，开始分析配图需求', 'success')
       break
     case 'AGENT4_COMPLETE': {
       currentStep.value = 3
       const requirements = (payload.imageRequirements as API.ImageRequirement[]) || []
       totalImages.value = requirements.length > 0 ? requirements.length : totalImages.value
-      addLog(`Image requirements ready: ${requirements.length}`, 'success')
+      addLog(`配图需求已就绪，共 ${requirements.length} 项`, 'success')
       break
     }
     case 'IMAGE_COMPLETE':
@@ -1455,7 +1455,7 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       imageProgress.value = totalImages.value > 0
         ? Math.min(100, Math.round((imageCount.value / totalImages.value) * 100))
         : 0
-      addLog(`Generating images ${imageCount.value}/${totalImages.value}`, 'info')
+      addLog(`正在生成配图 ${imageCount.value}/${totalImages.value}`, 'info')
       break
     case 'AGENT5_COMPLETE':
       currentStep.value = 4
@@ -1465,13 +1465,13 @@ const handleSSEMessage = async (msg: SSEMessage) => {
         totalImages.value = Math.max(totalImages.value, imageCount.value)
         imageProgress.value = 100
       }
-      addLog('All images generated, merging article content', 'success')
+      addLog('配图已全部生成，开始合成图文内容', 'success')
       break
     case 'MERGE_COMPLETE':
       currentStep.value = 5
       article.value.fullContent = String(payload.fullContent || '')
       scrollToBottom()
-      addLog('Content and images merged', 'success')
+      addLog('图文合成完成', 'success')
       break
     case 'ALL_COMPLETE':
       currentPhase.value = 'COMPLETED'
@@ -1484,11 +1484,11 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       await loadExecutionStats(taskId.value)
       stopExecutionStatsPolling()
       await forgetTask()
-      message.success('Article created successfully')
-      addLog('Article creation completed', 'success')
+      message.success('文章创建成功')
+      addLog('文章创建完成', 'success')
       break
     case 'ERROR': {
-      const msgText = String(payload.message || 'Article creation failed')
+      const msgText = String(payload.message || '文章创建失败')
       errorMessage.value = msgText
       errorVisible.value = true
       lastFailedTaskId.value = taskId.value
@@ -1501,7 +1501,7 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       await loadExecutionStats(taskId.value)
       stopExecutionStatsPolling()
       await forgetTask()
-      addLog(`Task failed: ${msgText}`, 'error')
+      addLog(`任务执行失败：${msgText}`, 'error')
       break
     }
     default:
@@ -1529,10 +1529,10 @@ const handleConfirmTitle = async (data: {
     isOutlineStreaming.value = false
     startExecutionStatsPolling(taskId.value)
     connectToTaskStream(taskId.value, true)
-    message.success('Title confirmed, generating outline')
+    message.success('标题已确认，开始生成大纲')
   } catch (error) {
     const err = error as Error
-    message.error(err.message || 'Confirm title failed')
+    message.error(err.message || '确认标题失败')
   } finally {
     confirmLoading.value = false
   }
@@ -1553,10 +1553,10 @@ const handleConfirmOutline = async (outlineData: API.OutlineSection[]) => {
     isStreaming.value = false
     startExecutionStatsPolling(taskId.value)
     connectToTaskStream(taskId.value, true)
-    message.success('Outline confirmed, generating content')
+    message.success('大纲已确认，开始生成正文')
   } catch (error) {
     const err = error as Error
-    message.error(err.message || 'Confirm outline failed')
+    message.error(err.message || '确认大纲失败')
   } finally {
     confirmLoading.value = false
   }
@@ -1572,7 +1572,7 @@ const handleSSEError = (error: Event) => {
   isCreating.value = false
   isStreaming.value = false
   isOutlineStreaming.value = false
-  message.error('Realtime connection closed, please refresh and retry')
+  message.error('实时连接已断开，请刷新页面后重试')
 }
 
 const handleSSEComplete = () => {
@@ -1586,9 +1586,9 @@ const copyContent = async () => {
   const content = article.value.fullContent || article.value.content || ''
   try {
     await navigator.clipboard.writeText(content)
-    message.success('Copied to clipboard')
+    message.success('已复制到剪贴板')
   } catch {
-    message.error('Copy failed')
+    message.error('复制失败')
   }
 }
 
@@ -1615,10 +1615,10 @@ const handleResumeTask = async () => {
     lastFailedTaskId.value = ''
     isCreating.value = true
     await rememberTask(activeTaskId)
-    addLog(`Task resumed from ${snapshot?.phase || currentPhase.value}`, 'info')
+    addLog(`任务已恢复执行：${getPhaseDisplayName(snapshot?.phase || currentPhase.value)}`, 'info')
     startExecutionStatsPolling(activeTaskId)
     connectToTaskStream(activeTaskId, true)
-    message.success('已重新接续当前任务')
+    message.success('已继续执行当前任务')
   } catch (error) {
     const err = error as Error
     message.error(err.message || '恢复任务失败')
@@ -1649,7 +1649,7 @@ const handleRetryNode = async (node?: string) => {
     lastFailedTaskId.value = ''
     isCreating.value = true
     await rememberTask(activeTaskId)
-    addLog(`Retry node: ${getNodeDisplayName(node)}`, 'info')
+    addLog(`已发起节点重试：${getNodeDisplayName(node)}`, 'info')
     startExecutionStatsPolling(activeTaskId)
     connectToTaskStream(activeTaskId, true)
     message.success('已发起节点重试')
