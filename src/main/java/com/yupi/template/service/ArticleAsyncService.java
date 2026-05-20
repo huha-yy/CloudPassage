@@ -35,6 +35,9 @@ public class ArticleAsyncService {
     @Resource
     private ArticleWorkflowEventService articleWorkflowEventService;
 
+    @Resource
+    private ArticleMemoryService articleMemoryService;
+
     @Async("articleExecutor")
     public void executePhase1(String taskId, String topic, String style) {
         log.info("Phase 1 started, taskId={}, mode={}", taskId, articleGenerationWorkflowService.getWorkflowMode());
@@ -133,6 +136,7 @@ public class ArticleAsyncService {
 
             articleService.saveArticleContent(taskId, state);
             articleService.updateArticleStatus(taskId, ArticleStatusEnum.COMPLETED, null);
+            articleMemoryService.recordTaskCompleted(taskId, state);
             state.setProgress(6);
             articleService.saveTaskSnapshot(state, ArticleStatusEnum.COMPLETED,
                     ArticlePhaseEnum.CONTENT_GENERATING, null);
@@ -179,6 +183,7 @@ public class ArticleAsyncService {
                 "Async workflow error captured: " + e.getClass().getSimpleName());
         articleService.updateArticleStatus(taskId, ArticleStatusEnum.FAILED, e.getMessage());
         state.setErrorMessage(e.getMessage());
+        articleMemoryService.recordTaskFailed(taskId, state.getPhase(), "workflow_error", e.getMessage());
         ArticlePhaseEnum phase = ArticlePhaseEnum.getByValue(state.getPhase());
         articleService.saveTaskSnapshot(state, ArticleStatusEnum.FAILED,
                 phase == null ? ArticlePhaseEnum.PENDING : phase,

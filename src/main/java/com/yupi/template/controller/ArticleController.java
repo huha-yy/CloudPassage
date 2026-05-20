@@ -18,6 +18,7 @@ import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.User;
 import com.yupi.template.model.enums.ArticleStyleEnum;
 import com.yupi.template.model.vo.AgentExecutionStats;
+import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.model.vo.ArticleVO;
 import com.yupi.template.service.AgentLogService;
@@ -113,6 +114,16 @@ public class ArticleController {
                 ErrorCode.PARAMS_ERROR, "Task id cannot be empty");
         User loginUser = userService.getLoginUser(httpServletRequest);
         return ResultUtils.success(articleService.getTaskSnapshot(taskId, loginUser));
+    }
+
+    @GetMapping("/task-memory/{taskId}")
+    @Operation(summary = "Get task-level memory")
+    public BaseResponse<ArticleTaskMemoryVO> getTaskMemory(@PathVariable String taskId,
+                                                           HttpServletRequest httpServletRequest) {
+        ThrowUtils.throwIf(taskId == null || taskId.trim().isEmpty(),
+                ErrorCode.PARAMS_ERROR, "Task id cannot be empty");
+        User loginUser = userService.getLoginUser(httpServletRequest);
+        return ResultUtils.success(articleService.getTaskMemory(taskId, loginUser));
     }
 
     @PostMapping("/list")

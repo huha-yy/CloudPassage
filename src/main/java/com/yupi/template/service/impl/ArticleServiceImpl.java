@@ -16,9 +16,11 @@ import com.yupi.template.model.entity.User;
 import com.yupi.template.model.enums.ArticlePhaseEnum;
 import com.yupi.template.model.enums.ArticleStatusEnum;
 import com.yupi.template.model.enums.ImageMethodEnum;
+import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.model.vo.ArticleVO;
 import com.yupi.template.service.ArticleAgentService;
+import com.yupi.template.service.ArticleMemoryService;
 import com.yupi.template.service.ArticleService;
 import com.yupi.template.service.ArticleTaskSnapshotService;
 import com.yupi.template.service.QuotaService;
@@ -54,6 +56,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     @Resource
     private ArticleTaskSnapshotService articleTaskSnapshotService;
 
+    @Resource
+    private ArticleMemoryService articleMemoryService;
+
     @Override
     public String createArticleTask(String topic, String style, List<String> enabledImageMethods, User loginUser) {
         List<String> finalImageMethods = processImageMethods(enabledImageMethods, loginUser);
@@ -71,6 +76,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setPhase(ArticlePhaseEnum.PENDING.getValue());
         article.setCreateTime(LocalDateTime.now());
         this.save(article);
+        articleMemoryService.initializeTaskMemory(article);
 
         log.info("Article task created, taskId={}, userId={}, style={}", taskId, loginUser.getId(), style);
         return taskId;
@@ -98,6 +104,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     public ArticleTaskSnapshotVO getTaskSnapshot(String taskId, User loginUser) {
         Article article = getArticleWithPermission(taskId, loginUser);
         return articleTaskSnapshotService.getSnapshot(taskId, article);
+    }
+
+    @Override
+    public ArticleTaskMemoryVO getTaskMemory(String taskId, User loginUser) {
+        getArticleWithPermission(taskId, loginUser);
+        return articleMemoryService.getTaskMemory(taskId);
     }
 
     @Override
@@ -210,6 +222,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         snapshotState.setTitle(title);
         articleTaskSnapshotService.saveSnapshot(snapshotState, ArticleStatusEnum.PROCESSING,
                 ArticlePhaseEnum.OUTLINE_GENERATING, null);
+        articleMemoryService.recordTitleConfirmed(article);
 
         log.info("Title confirmed, taskId={}, mainTitle={}", taskId, mainTitle);
     }
@@ -244,6 +257,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         snapshotState.setOutlineRaw(GsonUtils.toJson(Map.of("sections", outline)));
         articleTaskSnapshotService.saveSnapshot(snapshotState, ArticleStatusEnum.PROCESSING,
                 ArticlePhaseEnum.CONTENT_GENERATING, null);
+        articleMemoryService.recordOutlineConfirmed(taskId, outline);
 
         log.info("Outline confirmed, taskId={}, sectionsCount={}", taskId, outline.size());
     }
@@ -359,6 +373,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             resumeState.setImages(snapshot.getImages());
         }
         articleTaskSnapshotService.saveSnapshot(resumeState, ArticleStatusEnum.PROCESSING, phase, null);
+        articleMemoryService.recordTaskResume(taskId, phase.getValue(), "phase_resume", null);
 
         log.info("Task marked resumable, taskId={}, phase={}, status={}", taskId, phaseValue, statusValue);
         return articleTaskSnapshotService.getSnapshot(taskId, article);
@@ -388,6 +403,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
         log.info("Retry node requested, taskId={}, node={}, mappedPhase={}, currentPhase={}",
                 taskId, node, mappedPhase, snapshotPhase);
+        articleMemoryService.recordTaskResume(taskId, snapshotPhase, "node_retry", node);
         return resumeTask(taskId, loginUser);
     }
 

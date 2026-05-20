@@ -28,6 +28,19 @@ export async function getTaskSnapshot(
   })
 }
 
+/** 获取任务级记忆 GET /article/task-memory/${param0} */
+export async function getTaskMemory(
+  params: API.getTaskMemoryParams,
+  options?: { [key: string]: any }
+) {
+  const { taskId: param0, ...queryParams } = params
+  return request<API.BaseResponseArticleTaskMemoryVO>(`/article/task-memory/${param0}`, {
+    method: 'GET',
+    params: { ...queryParams },
+    ...(options || {}),
+  })
+}
+
 /** AI 修改大纲 POST /article/ai-modify-outline */
 export async function aiModifyOutline(
   body: API.ArticleAiModifyOutlineRequest,

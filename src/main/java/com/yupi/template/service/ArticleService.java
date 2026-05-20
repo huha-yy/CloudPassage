@@ -8,6 +8,7 @@ import com.yupi.template.model.entity.Article;
 import com.yupi.template.model.entity.User;
 import com.yupi.template.model.enums.ArticlePhaseEnum;
 import com.yupi.template.model.enums.ArticleStatusEnum;
+import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.model.vo.ArticleVO;
 
@@ -29,6 +30,8 @@ public interface ArticleService extends IService<Article> {
     ArticleVO getArticleDetail(String taskId, User loginUser);
 
     ArticleTaskSnapshotVO getTaskSnapshot(String taskId, User loginUser);
+
+    ArticleTaskMemoryVO getTaskMemory(String taskId, User loginUser);
 
     Page<ArticleVO> listArticleByPage(ArticleQueryRequest request, User loginUser);
 

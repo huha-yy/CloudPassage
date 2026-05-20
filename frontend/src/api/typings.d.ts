@@ -99,6 +99,26 @@
     updatedAt?: number
   }
 
+  type ArticleTaskMemoryVO = {
+    taskId?: string
+    userId?: number
+    topic?: string
+    style?: string
+    userDescription?: string
+    currentPhase?: string
+    lastSuccessNode?: string
+    lastFailedNode?: string
+    retryCount?: number
+    recentErrorMessage?: string
+    selectedTitle?: TitleOption
+    outlineSummary?: string
+    contentSummary?: string
+    imageStrategy?: string
+    qualitySignals?: string[]
+    manualActions?: string[]
+    updatedAt?: number
+  }
+
   type ArticleVO = {
     id?: number
     taskId?: string
@@ -130,6 +150,12 @@
   type BaseResponseArticleTaskSnapshotVO = {
     code?: number
     data?: ArticleTaskSnapshotVO
+    message?: string
+  }
+
+  type BaseResponseArticleTaskMemoryVO = {
+    code?: number
+    data?: ArticleTaskMemoryVO
     message?: string
   }
 
@@ -228,6 +254,10 @@
   }
 
   type getTaskSnapshotParams = {
+    taskId: string
+  }
+
+  type getTaskMemoryParams = {
     taskId: string
   }
 

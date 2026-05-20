@@ -6,7 +6,7 @@
 - `frontend/src` holds the Vue 3 + TypeScript app, organized into `pages/`, `components/`, `api/`, `stores/`, and `utils/`.
 - `go-backend/` and `python-backend/` are alternative backend ports; keep changes scoped to the stack you are editing.
 - `sql/` stores schema and migration-style scripts. Root Docker files support full-stack local startup.
-- `项目优化计划/` stores staged upgrade documents. Keep numbered Chinese files such as `00-总体升级方案.md`, `01-版本管理方案.md`, `02-第一阶段实施方案.md`, `03-第二阶段实施方案.md`, `04-第二阶段完成总结.md`, and `05-第三阶段实施方案.md` in sync with delivery progress.
+- `项目优化计划/` stores staged upgrade documents. Keep numbered Chinese files such as `00-总体升级方案.md`, `01-版本管理方案.md`, `02-第一阶段实施方案.md`, `03-第二阶段实施方案.md`, `04-第二阶段完成总结.md`, `05-第三阶段实施方案.md`, and `06-第三阶段记忆架构设计.md` in sync with delivery progress.
 
 ## Build, Test, and Development Commands
 
