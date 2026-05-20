@@ -6,6 +6,7 @@ import com.yupi.template.model.dto.article.ArticleWorkflowEvent;
 import com.yupi.template.model.enums.ArticlePhaseEnum;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
 import com.yupi.template.model.vo.ArticleSseMessageVO;
+import com.yupi.template.service.ArticleNodeLogService;
 import com.yupi.template.service.ArticleTaskSnapshotService;
 import com.yupi.template.service.ArticleWorkflowEventService;
 import com.yupi.template.utils.GsonUtils;
@@ -20,6 +21,9 @@ import java.util.Map;
  */
 @Service
 public class ArticleWorkflowEventServiceImpl implements ArticleWorkflowEventService {
+
+    @Resource
+    private ArticleNodeLogService articleNodeLogService;
 
     @Resource
     private ArticleTaskSnapshotService articleTaskSnapshotService;
@@ -40,6 +44,11 @@ public class ArticleWorkflowEventServiceImpl implements ArticleWorkflowEventServ
     public void publishSystemEvent(String taskId, ArticleState state, SseMessageTypeEnum type,
                                    String phase, Integer progress, Map<String, Object> payload) {
         publish(taskId, state, createEvent(taskId, type, phase, progress, payload));
+    }
+
+    @Override
+    public void publishNodeInfo(String taskId, String phase, String node, String message) {
+        articleNodeLogService.info(taskId, phase, node, message);
     }
 
     @Override

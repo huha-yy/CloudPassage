@@ -16,5 +16,7 @@ public interface ArticleWorkflowEventService {
     void publishSystemEvent(String taskId, ArticleState state, SseMessageTypeEnum type,
                             String phase, Integer progress, Map<String, Object> payload);
 
+    void publishNodeInfo(String taskId, String phase, String node, String message);
+
     void complete(String taskId);
 }

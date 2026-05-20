@@ -17,4 +17,10 @@ public interface ArticleGenerationWorkflowService {
     void generateContent(ArticleState state, Consumer<ArticleWorkflowEvent> eventConsumer);
 
     String getWorkflowMode();
+
+    void emitNodeStart(String taskId, String phase, String node);
+
+    void emitNodeSuccess(String taskId, String phase, String node);
+
+    void emitNodeFailure(String taskId, String phase, String node, Exception exception);
 }

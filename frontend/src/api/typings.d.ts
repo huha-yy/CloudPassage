@@ -4,8 +4,11 @@
     totalDurationMs?: number
     agentCount?: number
     agentDurations?: Record<string, any>
+    nodeCount?: number
+    nodeDurations?: Record<string, any>
     overallStatus?: string
     logs?: AgentLog[]
+    nodeLogs?: NodeExecutionLogVO[]
   }
 
   type AgentLog = {
@@ -23,6 +26,16 @@
     createTime?: string
     updateTime?: string
     isDelete?: number
+  }
+
+  type NodeExecutionLogVO = {
+    taskId?: string
+    phase?: string
+    node?: string
+    status?: string
+    message?: string
+    elapsedMs?: number
+    timestamp?: number
   }
 
   type ArticleAiModifyOutlineRequest = {

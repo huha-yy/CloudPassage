@@ -4,9 +4,11 @@ import com.yupi.template.agent.ArticleAgentOrchestrator;
 import com.yupi.template.agent.config.AgentConfig;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.dto.article.ArticleWorkflowEvent;
+import com.yupi.template.model.enums.ArticlePhaseEnum;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
 import com.yupi.template.service.ArticleAgentService;
 import com.yupi.template.service.ArticleGenerationWorkflowService;
+import com.yupi.template.service.ArticleNodeLogService;
 import com.yupi.template.utils.GsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,9 @@ public class ArticleGenerationWorkflowServiceImpl implements ArticleGenerationWo
 
     @Resource
     private AgentConfig agentConfig;
+
+    @Resource
+    private ArticleNodeLogService articleNodeLogService;
 
     @Override
     public void generateTitles(ArticleState state, Consumer<ArticleWorkflowEvent> eventConsumer) {
@@ -63,6 +68,22 @@ public class ArticleGenerationWorkflowServiceImpl implements ArticleGenerationWo
     @Override
     public String getWorkflowMode() {
         return agentConfig.isOrchestratorEnabled() ? "orchestrator" : "legacy";
+    }
+
+    @Override
+    public void emitNodeStart(String taskId, String phase, String node) {
+        articleNodeLogService.start(taskId, phase, node, node + " started");
+    }
+
+    @Override
+    public void emitNodeSuccess(String taskId, String phase, String node) {
+        articleNodeLogService.success(taskId, phase, node, node + " finished");
+    }
+
+    @Override
+    public void emitNodeFailure(String taskId, String phase, String node, Exception exception) {
+        String message = exception == null ? node + " failed" : exception.getMessage();
+        articleNodeLogService.fail(taskId, phase, node, message);
     }
 
     private void emit(String rawMessage, Consumer<ArticleWorkflowEvent> eventConsumer) {

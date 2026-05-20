@@ -47,10 +47,13 @@ public class ArticleAsyncService {
         state.setProgress(1);
 
         try {
+            articleGenerationWorkflowService.emitNodeStart(taskId, ArticlePhaseEnum.TITLE_GENERATING.getValue(), "workflow_phase_1");
             articleService.updateArticleStatus(taskId, ArticleStatusEnum.PROCESSING, null);
             articleService.updatePhase(taskId, ArticlePhaseEnum.TITLE_GENERATING);
             articleService.saveTaskSnapshot(state, ArticleStatusEnum.PROCESSING,
                     ArticlePhaseEnum.TITLE_GENERATING, null);
+            articleWorkflowEventService.publishNodeInfo(taskId, ArticlePhaseEnum.TITLE_GENERATING.getValue(),
+                    "workflow_phase_1", "Article task entered title generation");
 
             articleGenerationWorkflowService.generateTitles(state,
                     event -> articleWorkflowEventService.publishWorkflowEvent(taskId, state, event));
@@ -64,8 +67,10 @@ public class ArticleAsyncService {
             articleWorkflowEventService.publishSystemEvent(taskId, state, SseMessageTypeEnum.TITLES_GENERATED,
                     ArticlePhaseEnum.TITLE_SELECTING.getValue(), 1,
                     payload("titleOptions", state.getTitleOptions()));
+            articleGenerationWorkflowService.emitNodeSuccess(taskId, ArticlePhaseEnum.TITLE_GENERATING.getValue(), "workflow_phase_1");
             log.info("Phase 1 completed, taskId={}", taskId);
         } catch (Exception e) {
+            articleGenerationWorkflowService.emitNodeFailure(taskId, ArticlePhaseEnum.TITLE_GENERATING.getValue(), "workflow_phase_1", e);
             handlePhaseError(taskId, state, e);
         }
     }
@@ -79,8 +84,11 @@ public class ArticleAsyncService {
         state.setProgress(2);
 
         try {
+            articleGenerationWorkflowService.emitNodeStart(taskId, ArticlePhaseEnum.OUTLINE_GENERATING.getValue(), "workflow_phase_2");
             articleService.saveTaskSnapshot(state, ArticleStatusEnum.PROCESSING,
                     ArticlePhaseEnum.OUTLINE_GENERATING, null);
+            articleWorkflowEventService.publishNodeInfo(taskId, ArticlePhaseEnum.OUTLINE_GENERATING.getValue(),
+                    "workflow_phase_2", "Outline workflow restored from article state");
 
             articleGenerationWorkflowService.generateOutline(state,
                     event -> articleWorkflowEventService.publishWorkflowEvent(taskId, state, event));
@@ -97,8 +105,10 @@ public class ArticleAsyncService {
             articleWorkflowEventService.publishSystemEvent(taskId, state, SseMessageTypeEnum.OUTLINE_GENERATED,
                     ArticlePhaseEnum.OUTLINE_EDITING.getValue(), 2,
                     payload("outline", state.getOutline().getSections()));
+            articleGenerationWorkflowService.emitNodeSuccess(taskId, ArticlePhaseEnum.OUTLINE_GENERATING.getValue(), "workflow_phase_2");
             log.info("Phase 2 completed, taskId={}", taskId);
         } catch (Exception e) {
+            articleGenerationWorkflowService.emitNodeFailure(taskId, ArticlePhaseEnum.OUTLINE_GENERATING.getValue(), "workflow_phase_2", e);
             handlePhaseError(taskId, state, e);
         }
     }
@@ -112,8 +122,11 @@ public class ArticleAsyncService {
         state.setProgress(3);
 
         try {
+            articleGenerationWorkflowService.emitNodeStart(taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "workflow_phase_3");
             articleService.saveTaskSnapshot(state, ArticleStatusEnum.PROCESSING,
                     ArticlePhaseEnum.CONTENT_GENERATING, null);
+            articleWorkflowEventService.publishNodeInfo(taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(),
+                    "workflow_phase_3", "Content workflow restored from article state");
 
             articleGenerationWorkflowService.generateContent(state,
                     event -> articleWorkflowEventService.publishWorkflowEvent(taskId, state, event));
@@ -126,15 +139,19 @@ public class ArticleAsyncService {
             articleWorkflowEventService.publishSystemEvent(taskId, state, SseMessageTypeEnum.ALL_COMPLETE,
                     ArticlePhaseEnum.CONTENT_GENERATING.getValue(), 6,
                     payload("taskId", taskId));
+            articleGenerationWorkflowService.emitNodeSuccess(taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "workflow_phase_3");
             articleWorkflowEventService.complete(taskId);
             log.info("Phase 3 completed, taskId={}", taskId);
         } catch (Exception e) {
+            articleGenerationWorkflowService.emitNodeFailure(taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "workflow_phase_3", e);
             handlePhaseError(taskId, state, e);
         }
     }
 
     private void handlePhaseError(String taskId, ArticleState state, Exception e) {
         log.error("Async workflow failed, taskId={}", taskId, e);
+        articleWorkflowEventService.publishNodeInfo(taskId, state.getPhase(), "workflow_error",
+                "Async workflow error captured: " + e.getClass().getSimpleName());
         articleService.updateArticleStatus(taskId, ArticleStatusEnum.FAILED, e.getMessage());
         state.setErrorMessage(e.getMessage());
         ArticlePhaseEnum phase = ArticlePhaseEnum.getByValue(state.getPhase());
