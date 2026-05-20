@@ -1,12 +1,14 @@
-/**
- * SSE 工具函数
- * @author <a href="XXXX">呼哈设计</a>
+﻿/**
+ * SSE helpers for normalized article events.
  */
 
 export interface SSEMessage {
+  taskId?: string
   type: string
-  data?: any
-  [key: string]: any
+  phase?: string
+  progress?: number
+  timestamp?: number
+  payload?: Record<string, any>
 }
 
 export interface SSEOptions {
@@ -15,31 +17,25 @@ export interface SSEOptions {
   onComplete?: () => void
 }
 
-/**
- * 建立 SSE 连接
- */
 export const connectSSE = (taskId: string, options: SSEOptions): EventSource => {
   const { onMessage, onError, onComplete } = options
-
   const eventSource = new EventSource(`/api/article/progress/${taskId}`)
 
   eventSource.onmessage = (event) => {
     try {
       const message: SSEMessage = JSON.parse(event.data)
       onMessage(message)
-      
-      // 检查是否完成
       if (message.type === 'ALL_COMPLETE' || message.type === 'ERROR') {
         eventSource.close()
         onComplete?.()
       }
     } catch (error) {
-      console.error('SSE 消息解析失败:', error)
+      console.error('Failed to parse SSE message:', error)
     }
   }
 
   eventSource.onerror = (error) => {
-    console.error('SSE 连接错误:', error)
+    console.error('SSE connection error:', error)
     onError?.(error)
     eventSource.close()
   }
@@ -47,9 +43,6 @@ export const connectSSE = (taskId: string, options: SSEOptions): EventSource => 
   return eventSource
 }
 
-/**
- * 关闭 SSE 连接
- */
 export const closeSSE = (eventSource: EventSource | null) => {
   if (eventSource) {
     eventSource.close()

@@ -1,4 +1,4 @@
-declare namespace API {
+﻿declare namespace API {
   type AgentExecutionStats = {
     taskId?: string
     totalDurationMs?: number
@@ -57,6 +57,26 @@ declare namespace API {
     status?: string
   }
 
+  type ArticleTaskSnapshotVO = {
+    taskId?: string
+    topic?: string
+    style?: string
+    userDescription?: string
+    status?: string
+    phase?: string
+    progress?: number
+    errorMessage?: string
+    titleOptions?: TitleOption[]
+    title?: TitleOption
+    outline?: OutlineSection[]
+    outlineRaw?: string
+    content?: string
+    fullContent?: string
+    imageRequirements?: ImageRequirement[]
+    images?: ImageItem[]
+    updatedAt?: number
+  }
+
   type ArticleVO = {
     id?: number
     taskId?: string
@@ -76,11 +96,18 @@ declare namespace API {
     errorMessage?: string
     createTime?: string
     completedTime?: string
+    updateTime?: string
   }
 
   type BaseResponseAgentExecutionStats = {
     code?: number
     data?: AgentExecutionStats
+    message?: string
+  }
+
+  type BaseResponseArticleTaskSnapshotVO = {
+    code?: number
+    data?: ArticleTaskSnapshotVO
     message?: string
   }
 
@@ -178,6 +205,10 @@ declare namespace API {
     taskId: string
   }
 
+  type getTaskSnapshotParams = {
+    taskId: string
+  }
+
   type getUserByIdParams = {
     id: number
   }
@@ -193,6 +224,17 @@ declare namespace API {
     keywords?: string
     sectionTitle?: string
     description?: string
+    placeholderId?: string
+  }
+
+  type ImageRequirement = {
+    position?: number
+    type?: string
+    sectionTitle?: string
+    keywords?: string
+    imageSource?: string
+    prompt?: string
+    placeholderId?: string
   }
 
   type LoginUserVO = {

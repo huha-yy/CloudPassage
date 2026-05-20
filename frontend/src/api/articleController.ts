@@ -1,15 +1,27 @@
-// @ts-ignore
+﻿// @ts-ignore
 /* eslint-disable */
 import request from '@/request'
 
 /** 获取文章详情 GET /article/${param0} */
 export async function getArticle(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getArticleParams,
   options?: { [key: string]: any }
 ) {
   const { taskId: param0, ...queryParams } = params
   return request<API.BaseResponseArticleVO>(`/article/${param0}`, {
+    method: 'GET',
+    params: { ...queryParams },
+    ...(options || {}),
+  })
+}
+
+/** 获取任务快照 GET /article/snapshot/${param0} */
+export async function getTaskSnapshot(
+  params: API.getTaskSnapshotParams,
+  options?: { [key: string]: any }
+) {
+  const { taskId: param0, ...queryParams } = params
+  return request<API.BaseResponseArticleTaskSnapshotVO>(`/article/snapshot/${param0}`, {
     method: 'GET',
     params: { ...queryParams },
     ...(options || {}),
@@ -46,7 +58,7 @@ export async function confirmOutline(
   })
 }
 
-/** 确认标题并输入补充描述 POST /article/confirm-title */
+/** 确认标题 POST /article/confirm-title */
 export async function confirmTitle(
   body: API.ArticleConfirmTitleRequest,
   options?: { [key: string]: any }
@@ -90,7 +102,6 @@ export async function deleteArticle(body: API.DeleteRequest, options?: { [key: s
 
 /** 获取任务执行日志 GET /article/execution-logs/${param0} */
 export async function getExecutionLogs(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getExecutionLogsParams,
   options?: { [key: string]: any }
 ) {
@@ -116,7 +127,6 @@ export async function listArticle(body: API.ArticleQueryRequest, options?: { [ke
 
 /** 获取文章生成进度(SSE) GET /article/progress/${param0} */
 export async function getProgress(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getProgressParams,
   options?: { [key: string]: any }
 ) {

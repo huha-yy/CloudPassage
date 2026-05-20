@@ -534,8 +534,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeUnmount, onMounted, nextTick, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import {
@@ -557,52 +557,83 @@ import {
   PictureOutlined,
   WarningOutlined,
   CrownOutlined,
-  FileTextOutlined
+  FileTextOutlined,
 } from '@ant-design/icons-vue'
-import { createArticle, confirmTitle, confirmOutline } from '@/api/articleController'
-import { connectSSE, closeSSE, type SSEMessage } from '@/utils/sse'
-import { isAdmin as checkIsAdmin, isVip as checkIsVip, hasQuota as checkHasQuota } from '@/utils/permission'
+import {
+  createArticle,
+  confirmTitle,
+  confirmOutline,
+  getTaskSnapshot,
+} from '@/api/articleController'
+import { closeSSE, connectSSE, type SSEMessage } from '@/utils/sse'
+import {
+  isAdmin as checkIsAdmin,
+  isVip as checkIsVip,
+  hasQuota as checkHasQuota,
+} from '@/utils/permission'
 import { marked } from 'marked'
 import TitleSelectingStage from './components/TitleSelectingStage.vue'
 import OutlineEditingStage from './components/OutlineEditingStage.vue'
+
+type UiPhase =
+  | 'INPUT'
+  | 'TITLE_GENERATING'
+  | 'TITLE_SELECTING'
+  | 'OUTLINE_GENERATING'
+  | 'OUTLINE_EDITING'
+  | 'CONTENT_GENERATING'
+  | 'COMPLETED'
+
+interface RealtimeLog {
+  timestamp: number
+  level: string
+  message: string
+}
+
+interface OutlineItem {
+  section: number
+  title: string
+  points: string[]
+}
+
+interface TitleOptionViewModel {
+  mainTitle: string
+  subTitle: string
+}
+
+const TASK_STORAGE_KEY = 'article-create:active-task-id'
 
 const router = useRouter()
 const route = useRoute()
 const loginUserStore = useLoginUserStore()
 
-// 配额相关计算属性
 const isAdmin = computed(() => checkIsAdmin(loginUserStore.loginUser))
 const isVip = computed(() => checkIsVip(loginUserStore.loginUser))
 const quota = computed(() => loginUserStore.loginUser.quota ?? 0)
 const hasQuota = computed(() => checkHasQuota(loginUserStore.loginUser))
 
-// 智能体步骤（对应后端 6 个步骤）
 const agentSteps = [
-  { title: '生成标题', description: 'AI 分析选题，生成吸睛标题' },
-  { title: '规划大纲', description: '构建文章结构，理清脉络' },
-  { title: '撰写正文', description: '流式生成高质量文章内容' },
-  { title: '分析配图', description: '智能分析配图需求和位置' },
-  { title: '生成配图', description: '自动匹配高清无版权图片' },
-  { title: '图文合成', description: '将配图插入正文，完美呈现' },
+  { title: 'Title', description: 'Generate candidate titles from the topic' },
+  { title: 'Outline', description: 'Plan the article structure and key points' },
+  { title: 'Content', description: 'Stream the article draft into the preview area' },
+  { title: 'Images', description: 'Analyze image requirements for the article' },
+  { title: 'Render', description: 'Generate and upload article images' },
+  { title: 'Merge', description: 'Merge text and images into the final article' },
 ]
 
-// 示例选题
 const exampleTopics = [
-  '2026年AI如何改变职场',
-  '程序员如何提升竞争力',
-  '远程办公的利与弊',
-  '如何培养深度思考',
-  '新能源汽车趋势',
-  '健康饮食指南',
+  'How AI will change work in 2026',
+  'How developers can improve competitiveness',
+  'Pros and cons of remote work',
+  'How to build deep thinking skills',
+  'New energy vehicle trend analysis',
+  'Healthy eating guide',
 ]
 
-// 阶段状态
-const currentPhase = ref<string>('INPUT')  // INPUT, TITLE_SELECTING, OUTLINE_EDITING, CONTENT_GENERATING, COMPLETED
-
-// 状态
+const currentPhase = ref<UiPhase>('INPUT')
 const topic = ref('')
-const selectedStyle = ref('')  // 选中的文章风格（空字符串表示默认）
-const selectedImageMethods = ref<string[]>([])  // 选中的配图方式（空数组表示全部）
+const selectedStyle = ref('')
+const selectedImageMethods = ref<string[]>([])
 const isCreating = ref(false)
 const isCompleted = ref(false)
 const isStreaming = ref(false)
@@ -612,82 +643,14 @@ const taskId = ref('')
 const errorVisible = ref(false)
 const errorMessage = ref('')
 const confirmLoading = ref(false)
-
-// 实时日志
-interface RealtimeLog {
-  timestamp: number
-  level: string
-  message: string
-}
 const realtimeLogs = ref<RealtimeLog[]>([])
-
-// 标题方案
-const titleOptions = ref<Array<{mainTitle: string, subTitle: string}>>([])
-
-// 大纲数据
-const outline = ref<Array<{section: number, title: string, points: string[]}>>([])
-
-// 大纲数据（流式）
+const titleOptions = ref<TitleOptionViewModel[]>([])
+const outline = ref<API.OutlineSection[]>([])
 const outlineRaw = ref('')
-
-// 大纲项类型
-interface OutlineItem {
-  title: string
-  points: string[]
-  section: number
-}
-
-// 解析大纲 JSON（格式为 { "sections": [...] }）
-const parsedOutline = computed<OutlineItem[]>(() => {
-  if (!outlineRaw.value) return []
-
-  const str = outlineRaw.value.trim()
-
-  // 尝试解析完整的 JSON
-  try {
-    const parsed = JSON.parse(str)
-    if (parsed && Array.isArray(parsed.sections)) {
-      return parsed.sections
-    }
-    return []
-  } catch {
-    // JSON 不完整时，尝试解析已完成的部分
-    try {
-      // 找到最后一个完整的 section 对象 }
-      // 格式: { "sections": [ {...}, {...} ] }
-      const sectionsMatch = str.match(/"sections"\s*:\s*\[/)
-      if (!sectionsMatch) return []
-
-      const sectionsStart = str.indexOf('[', sectionsMatch.index)
-      if (sectionsStart === -1) return []
-
-      // 从 sections 数组开始，找到最后一个完整的 }
-      const afterStart = str.substring(sectionsStart)
-      const lastBrace = afterStart.lastIndexOf('}')
-
-      if (lastBrace > 0) {
-        const partialArray = afterStart.substring(0, lastBrace + 1) + ']'
-        const parsed = JSON.parse(partialArray)
-        if (Array.isArray(parsed)) {
-          return parsed
-        }
-      }
-      return []
-    } catch {
-      return []
-    }
-  }
-})
-
-// 内容区域引用（用于自动滚动）
 const mainContentRef = ref<HTMLElement | null>(null)
-
-// 配图进度
 const imageCount = ref(0)
 const totalImages = ref(5)
 const imageProgress = ref(0)
-
-// 文章数据
 const article = ref<Partial<API.ArticleVO>>({
   mainTitle: '',
   subTitle: '',
@@ -696,14 +659,48 @@ const article = ref<Partial<API.ArticleVO>>({
   images: [],
 })
 
+const parsedOutline = computed<OutlineItem[]>(() => {
+  if (!outlineRaw.value) {
+    return []
+  }
+
+  const raw = outlineRaw.value.trim()
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && Array.isArray(parsed.sections)) {
+      return parsed.sections
+    }
+  } catch {
+    try {
+      const sectionsMatch = raw.match(/"sections"\s*:\s*\[/)
+      if (!sectionsMatch) {
+        return []
+      }
+      const sectionsStart = raw.indexOf('[', sectionsMatch.index)
+      if (sectionsStart < 0) {
+        return []
+      }
+      const afterStart = raw.substring(sectionsStart)
+      const lastBrace = afterStart.lastIndexOf('}')
+      if (lastBrace < 0) {
+        return []
+      }
+      const partialArray = `${afterStart.substring(0, lastBrace + 1)}]`
+      const parsed = JSON.parse(partialArray)
+      if (Array.isArray(parsed)) {
+        return parsed
+      }
+    } catch {
+      return []
+    }
+  }
+  return []
+})
+
 let eventSource: EventSource | null = null
 
-// Markdown 转 HTML
-const markdownToHtml = (markdown: string | undefined) => {
-  return marked(markdown || '')
-}
+const markdownToHtml = (markdown: string | undefined) => marked.parse(markdown || '') as string
 
-// 自动滚动到底部
 const scrollToBottom = () => {
   nextTick(() => {
     if (mainContentRef.value) {
@@ -712,286 +709,512 @@ const scrollToBottom = () => {
   })
 }
 
-// 开始创作
-const startCreate = async () => {
-  if (!topic.value.trim()) {
-    message.warning('请输入选题')
+const defaultArticle = (): Partial<API.ArticleVO> => ({
+  mainTitle: '',
+  subTitle: '',
+  content: '',
+  fullContent: '',
+  images: [],
+})
+
+const payloadOf = (msg: SSEMessage) => msg.payload ?? {}
+
+const normalizeTitleOptions = (items?: API.TitleOption[]) =>
+  (items || []).map((item) => ({
+    mainTitle: item.mainTitle || '',
+    subTitle: item.subTitle || '',
+  }))
+
+const getStoredTaskId = () => {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+  return window.localStorage.getItem(TASK_STORAGE_KEY) || ''
+}
+
+const persistTaskId = (value: string) => {
+  if (typeof window === 'undefined') {
     return
   }
+  window.localStorage.setItem(TASK_STORAGE_KEY, value)
+}
 
-  if (!hasQuota.value) {
-    message.error('配额不足，无法创建文章')
+const clearPersistedTaskId = () => {
+  if (typeof window === 'undefined') {
     return
   }
+  window.localStorage.removeItem(TASK_STORAGE_KEY)
+}
 
-  isCreating.value = true
+const syncRouteTaskId = async (value?: string) => {
+  const nextQuery = { ...route.query }
+  if (value) {
+    nextQuery.taskId = value
+  } else {
+    delete nextQuery.taskId
+  }
+  await router.replace({ query: nextQuery })
+}
+
+const rememberTask = async (value: string) => {
+  taskId.value = value
+  persistTaskId(value)
+  await syncRouteTaskId(value)
+}
+
+const forgetTask = async () => {
+  clearPersistedTaskId()
+  await syncRouteTaskId(undefined)
+}
+
+const closeCurrentConnection = () => {
+  closeSSE(eventSource)
+  eventSource = null
+}
+
+const resetRuntimeState = () => {
+  isCreating.value = false
+  isCompleted.value = false
+  isStreaming.value = false
+  isOutlineStreaming.value = false
   currentStep.value = 0
+  errorVisible.value = false
+  errorMessage.value = ''
+  confirmLoading.value = false
+  titleOptions.value = []
+  outline.value = []
+  outlineRaw.value = ''
   realtimeLogs.value = []
-  addLog('开始创建文章任务...', 'info')
+  imageCount.value = 0
+  totalImages.value = 5
+  imageProgress.value = 0
+  article.value = defaultArticle()
+}
 
-  try {
-    // 创建任务
-    const res = await createArticle({
-      topic: topic.value,
-      style: selectedStyle.value || undefined,
-      enabledImageMethods: selectedImageMethods.value.length > 0 ? selectedImageMethods.value : undefined
-    })
-    const newTaskId = res.data.data
-    if (!newTaskId) {
-      throw new Error('创建任务失败：未返回任务ID')
-    }
-    taskId.value = newTaskId
-    addLog(`任务创建成功，ID: ${newTaskId}`, 'success')
+const resetCreate = async () => {
+  closeCurrentConnection()
+  resetRuntimeState()
+  currentPhase.value = 'INPUT'
+  topic.value = ''
+  selectedStyle.value = ''
+  selectedImageMethods.value = []
+  taskId.value = ''
+  await forgetTask()
+}
 
-    // 刷新用户信息（更新配额）
-    await loginUserStore.fetchLoginUser()
+const setUiByPhase = (phase?: string, status?: string, progress?: number) => {
+  isCompleted.value = status === 'COMPLETED'
 
-    // 建立 SSE 连接
-    addLog('已建立实时连接，开始生成...', 'info')
-    eventSource = connectSSE(taskId.value, {
-      onMessage: handleSSEMessage,
-      onError: handleSSEError,
-      onComplete: handleSSEComplete,
-    })
-  } catch (error) {
-    const err = error as Error
-    message.error(err.message || '创建任务失败')
+  if (status === 'COMPLETED') {
+    currentPhase.value = 'COMPLETED'
+    currentStep.value = 6
     isCreating.value = false
+    isStreaming.value = false
+    isOutlineStreaming.value = false
+    return
+  }
+
+  switch (phase) {
+    case 'TITLE_GENERATING':
+      currentPhase.value = 'TITLE_GENERATING'
+      currentStep.value = 0
+      isCreating.value = true
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      break
+    case 'TITLE_SELECTING':
+      currentPhase.value = 'TITLE_SELECTING'
+      currentStep.value = 1
+      isCreating.value = false
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      break
+    case 'OUTLINE_GENERATING':
+      currentPhase.value = 'OUTLINE_GENERATING'
+      currentStep.value = 1
+      isCreating.value = true
+      isStreaming.value = false
+      isOutlineStreaming.value = true
+      break
+    case 'OUTLINE_EDITING':
+      currentPhase.value = 'OUTLINE_EDITING'
+      currentStep.value = 1
+      isCreating.value = false
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      break
+    case 'CONTENT_GENERATING': {
+      currentPhase.value = 'CONTENT_GENERATING'
+      const resolvedProgress = progress ?? 3
+      currentStep.value = resolvedProgress >= 6 ? 5 : Math.max(2, resolvedProgress - 1)
+      isCreating.value = true
+      isStreaming.value = resolvedProgress <= 3
+      isOutlineStreaming.value = false
+      break
+    }
+    default:
+      currentPhase.value = 'INPUT'
+      currentStep.value = 0
+      isCreating.value = false
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      break
   }
 }
 
-// 添加日志
-const addLog = (message: string, level: string = 'info') => {
+const applySnapshot = (snapshot: API.ArticleTaskSnapshotVO) => {
+  topic.value = snapshot.topic || topic.value
+  selectedStyle.value = snapshot.style || ''
+  titleOptions.value = normalizeTitleOptions(snapshot.titleOptions)
+  outline.value = snapshot.outline || []
+  outlineRaw.value = snapshot.outlineRaw || (snapshot.outline ? JSON.stringify({ sections: snapshot.outline }) : '')
+  article.value = {
+    ...article.value,
+    mainTitle: snapshot.title?.mainTitle || article.value.mainTitle || '',
+    subTitle: snapshot.title?.subTitle || article.value.subTitle || '',
+    content: snapshot.content || '',
+    fullContent: snapshot.fullContent || '',
+    images: snapshot.images || [],
+  }
+
+  const requirementCount = snapshot.imageRequirements?.length || 0
+  const generatedCount = snapshot.images?.length || 0
+  if (requirementCount > 0) {
+    totalImages.value = requirementCount
+  } else if (generatedCount > 0) {
+    totalImages.value = generatedCount
+  }
+  imageCount.value = generatedCount
+  imageProgress.value = totalImages.value > 0
+    ? Math.min(100, Math.round((generatedCount / totalImages.value) * 100))
+    : 0
+
+  errorMessage.value = snapshot.errorMessage || ''
+  errorVisible.value = snapshot.status === 'FAILED' && !!snapshot.errorMessage
+  setUiByPhase(snapshot.phase, snapshot.status, snapshot.progress)
+}
+
+const shouldReconnectStream = (snapshot: API.ArticleTaskSnapshotVO) => {
+  if (snapshot.status !== 'PROCESSING') {
+    return false
+  }
+  return ['TITLE_GENERATING', 'OUTLINE_GENERATING', 'CONTENT_GENERATING'].includes(snapshot.phase || '')
+}
+
+const restoreTask = async (restoreTaskId: string, silent = false) => {
+  if (!restoreTaskId) {
+    return
+  }
+
+  try {
+    const res = await getTaskSnapshot({ taskId: restoreTaskId })
+    const snapshot = res.data.data
+    if (!snapshot) {
+      await forgetTask()
+      return
+    }
+
+    await rememberTask(restoreTaskId)
+    applySnapshot(snapshot)
+    addLog(`Task restored: ${restoreTaskId}`, 'info')
+
+    if (shouldReconnectStream(snapshot)) {
+      connectToTaskStream(restoreTaskId, true)
+    }
+
+    if (!silent) {
+      message.success('Previous task restored')
+    }
+  } catch (error) {
+    console.error('Failed to restore task:', error)
+    await forgetTask()
+    if (!silent) {
+      message.error('Failed to restore task, please create a new one')
+    }
+  }
+}
+
+const connectToTaskStream = (activeTaskId: string, silent = false) => {
+  closeCurrentConnection()
+  eventSource = connectSSE(activeTaskId, {
+    onMessage: handleSSEMessage,
+    onError: handleSSEError,
+    onComplete: handleSSEComplete,
+  })
+  if (!silent) {
+    addLog('Realtime connection established', 'info')
+  }
+}
+
+const startCreate = async () => {
+  if (!topic.value.trim()) {
+    message.warning('Please enter a topic')
+    return
+  }
+  if (!hasQuota.value) {
+    message.error('No quota left for creating an article')
+    return
+  }
+
+  closeCurrentConnection()
+  resetRuntimeState()
+  currentPhase.value = 'TITLE_GENERATING'
+  isCreating.value = true
+  addLog('Creating article task...', 'info')
+
+  try {
+    const res = await createArticle({
+      topic: topic.value,
+      style: selectedStyle.value || undefined,
+      enabledImageMethods:
+        selectedImageMethods.value.length > 0 ? selectedImageMethods.value : undefined,
+    })
+    const newTaskId = res.data.data
+    if (!newTaskId) {
+      throw new Error('Create task failed: task ID is missing')
+    }
+
+    await rememberTask(newTaskId)
+    addLog(`Task created: ${newTaskId}`, 'success')
+    await loginUserStore.fetchLoginUser()
+    connectToTaskStream(newTaskId)
+  } catch (error) {
+    const err = error as Error
+    message.error(err.message || 'Create task failed')
+    isCreating.value = false
+    currentPhase.value = 'INPUT'
+  }
+}
+
+const addLog = (logMessage: string, level: string = 'info') => {
   realtimeLogs.value.push({
     timestamp: Date.now(),
     level,
-    message
+    message: logMessage,
   })
-  // 限制日志数量，最多保留 50 条
   if (realtimeLogs.value.length > 50) {
     realtimeLogs.value.shift()
   }
 }
 
-// 格式化日志时间
 const formatLogTime = (timestamp: number) => {
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour12: false })
 }
 
-// 处理 SSE 消息
-const handleSSEMessage = (msg: SSEMessage) => {
-  console.log('SSE消息:', msg)
+const handleSSEMessage = async (msg: SSEMessage) => {
+  const payload = payloadOf(msg)
+  if (msg.taskId) {
+    taskId.value = msg.taskId
+  }
 
   switch (msg.type) {
     case 'AGENT1_COMPLETE':
-      // 智能体1完成，进入标题生成阶段（显示加载）
       currentPhase.value = 'TITLE_GENERATING'
-      currentStep.value = 1
-      addLog('智能体1：标题方案生成完成', 'success')
+      currentStep.value = 0
+      isCreating.value = true
+      addLog('Title generation completed', 'success')
       break
-
     case 'TITLES_GENERATED':
-      // 标题方案生成完成，切换到选择标题阶段
       currentPhase.value = 'TITLE_SELECTING'
-      titleOptions.value = msg.titleOptions || []
+      currentStep.value = 1
       isCreating.value = false
-      addLog(`生成了 ${msg.titleOptions?.length || 0} 个标题方案`, 'success')
+      titleOptions.value = normalizeTitleOptions(payload.titleOptions as API.TitleOption[])
+      addLog(`Received ${titleOptions.value.length} title options`, 'success')
       break
-
-    case 'AGENT2_STREAMING':
-      // 大纲流式输出（显示生成中状态）
+    case 'AGENT2_STREAMING': {
       currentPhase.value = 'OUTLINE_GENERATING'
+      currentStep.value = 1
+      isCreating.value = true
       isOutlineStreaming.value = true
-      outlineRaw.value += msg.content || ''
+      const chunk = String(payload.content || '')
+      outlineRaw.value += chunk
       scrollToBottom()
       break
-
+    }
     case 'OUTLINE_GENERATED':
-      // 大纲生成完成，切换到编辑大纲阶段
       currentPhase.value = 'OUTLINE_EDITING'
-      outline.value = msg.outline || []
+      currentStep.value = 1
       isCreating.value = false
       isOutlineStreaming.value = false
-      addLog('大纲生成完成，等待确认', 'success')
-      // 保持在步骤1（规划大纲），用户编辑大纲时仍处于此阶段
+      outline.value = (payload.outline as API.OutlineSection[]) || []
+      outlineRaw.value = JSON.stringify({ sections: outline.value })
+      addLog('Outline generated, waiting for confirmation', 'success')
       break
-
     case 'AGENT2_COMPLETE':
-      // 大纲完成（内部处理，已在 OUTLINE_GENERATED 中切换阶段）
-      // 不改变 currentStep，保持在步骤1，等用户确认大纲后才进入步骤2
       break
-
-    case 'AGENT3_STREAMING':
-      // 正文流式输出，进入步骤2（撰写正文）
+    case 'AGENT3_STREAMING': {
       currentPhase.value = 'CONTENT_GENERATING'
       currentStep.value = 2
+      isCreating.value = true
       isStreaming.value = true
-      article.value.content += msg.content || ''
+      const chunk = String(payload.content || '')
+      article.value.content = `${article.value.content || ''}${chunk}`
       scrollToBottom()
       break
-
+    }
     case 'AGENT3_COMPLETE':
-      // 正文完成，进入配图分析步骤
       isStreaming.value = false
       currentStep.value = 3
-      addLog('正文生成完成', 'success')
+      addLog('Content generated, analyzing image requirements', 'success')
       break
-
-    case 'AGENT4_COMPLETE':
-      // 配图分析完成，进入配图生成步骤
-      currentStep.value = 4
-      totalImages.value = msg.imageRequirements?.length || 5
-      addLog(`配图需求分析完成，共 ${totalImages.value} 张`, 'success')
+    case 'AGENT4_COMPLETE': {
+      currentStep.value = 3
+      const requirements = (payload.imageRequirements as API.ImageRequirement[]) || []
+      totalImages.value = requirements.length > 0 ? requirements.length : totalImages.value
+      addLog(`Image requirements ready: ${requirements.length}`, 'success')
       break
-
+    }
     case 'IMAGE_COMPLETE':
-      // 单张配图完成
-      imageCount.value++
-      imageProgress.value = Math.round((imageCount.value / totalImages.value) * 100)
-      addLog(`配图生成中 ${imageCount.value}/${totalImages.value}`, 'info')
+      currentStep.value = 4
+      imageCount.value += 1
+      imageProgress.value = totalImages.value > 0
+        ? Math.min(100, Math.round((imageCount.value / totalImages.value) * 100))
+        : 0
+      addLog(`Generating images ${imageCount.value}/${totalImages.value}`, 'info')
       break
-
     case 'AGENT5_COMPLETE':
-      // 所有配图完成，进入图文合成步骤
-      currentStep.value = 5
-      article.value.images = msg.images
-      addLog('所有配图生成完成', 'success')
+      currentStep.value = 4
+      article.value.images = (payload.images as API.ImageItem[]) || []
+      if (article.value.images?.length) {
+        imageCount.value = article.value.images.length
+        totalImages.value = Math.max(totalImages.value, imageCount.value)
+        imageProgress.value = 100
+      }
+      addLog('All images generated, merging article content', 'success')
       break
-
     case 'MERGE_COMPLETE':
-      // 图文合成完成
-      article.value.fullContent = msg.fullContent
+      currentStep.value = 5
+      article.value.fullContent = String(payload.fullContent || '')
       scrollToBottom()
-      addLog('图文合成完成', 'success')
+      addLog('Content and images merged', 'success')
       break
-
     case 'ALL_COMPLETE':
-      // 全部完成
       currentPhase.value = 'COMPLETED'
       currentStep.value = 6
+      isCreating.value = false
       isCompleted.value = true
-      message.success('文章创作完成!')
-      addLog('✨ 文章创作完成！', 'success')
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      await forgetTask()
+      message.success('Article created successfully')
+      addLog('Article creation completed', 'success')
       break
-
-    case 'ERROR':
-      errorMessage.value = msg.message || '创作失败'
+    case 'ERROR': {
+      const msgText = String(payload.message || 'Article creation failed')
+      errorMessage.value = msgText
       errorVisible.value = true
       isCreating.value = false
-      currentPhase.value = 'INPUT'
-      addLog(`创作失败: ${msg.message || '未知错误'}`, 'error')
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      if (msg.phase) {
+        setUiByPhase(msg.phase, 'FAILED', msg.progress)
+      }
+      await forgetTask()
+      addLog(`Task failed: ${msgText}`, 'error')
+      break
+    }
+    default:
       break
   }
 }
 
-// 确认标题
-const handleConfirmTitle = async (data: {mainTitle: string, subTitle: string, userDescription: string}) => {
+const handleConfirmTitle = async (data: {
+  mainTitle: string
+  subTitle: string
+  userDescription: string
+}) => {
   confirmLoading.value = true
   try {
     await confirmTitle({
       taskId: taskId.value,
       selectedMainTitle: data.mainTitle,
       selectedSubTitle: data.subTitle,
-      userDescription: data.userDescription
+      userDescription: data.userDescription,
     })
-    // 保存标题信息，用于大纲生成阶段展示
     article.value.mainTitle = data.mainTitle
     article.value.subTitle = data.subTitle
-    // 不直接切换阶段，等待 SSE 消息 OUTLINE_GENERATED
-    message.success('标题已确认，正在生成大纲...')
+    currentPhase.value = 'OUTLINE_GENERATING'
+    isCreating.value = true
+    isOutlineStreaming.value = false
+    connectToTaskStream(taskId.value, true)
+    message.success('Title confirmed, generating outline')
   } catch (error) {
     const err = error as Error
-    message.error(err.message || '确认标题失败')
+    message.error(err.message || 'Confirm title failed')
   } finally {
     confirmLoading.value = false
   }
 }
 
-// 确认大纲
-const handleConfirmOutline = async (outlineData: Array<{section: number, title: string, points: string[]}>) => {
+const handleConfirmOutline = async (outlineData: API.OutlineSection[]) => {
   confirmLoading.value = true
   try {
     await confirmOutline({
       taskId: taskId.value,
-      outline: outlineData
+      outline: outlineData,
     })
-    // 更新 outlineRaw 为用户修改后的大纲，确保 CONTENT_GENERATING 阶段展示正确的大纲
+    outline.value = outlineData
     outlineRaw.value = JSON.stringify({ sections: outlineData })
-    // 不直接切换阶段，等待后端开始生成正文并推送 AGENT3_STREAMING
-    message.success('大纲已确认，正在生成正文...')
+    currentPhase.value = 'CONTENT_GENERATING'
+    currentStep.value = 2
+    isCreating.value = true
+    isStreaming.value = false
+    connectToTaskStream(taskId.value, true)
+    message.success('Outline confirmed, generating content')
   } catch (error) {
     const err = error as Error
-    message.error(err.message || '确认大纲失败')
+    message.error(err.message || 'Confirm outline failed')
   } finally {
     confirmLoading.value = false
   }
 }
 
-// 处理 SSE 错误
 const handleSSEError = (error: Event) => {
-  console.error('SSE错误:', error)
-  message.error('连接失败,请重试')
+  console.error('SSE connection error:', error)
+  closeCurrentConnection()
+  if (isCompleted.value || currentPhase.value === 'COMPLETED') {
+    return
+  }
   isCreating.value = false
+  isStreaming.value = false
+  isOutlineStreaming.value = false
+  message.error('Realtime connection closed, please refresh and retry')
 }
 
-// 处理 SSE 完成
 const handleSSEComplete = () => {
-  console.log('SSE连接关闭')
+  closeCurrentConnection()
 }
 
-// 复制全文
 const copyContent = async () => {
   const content = article.value.fullContent || article.value.content || ''
   try {
     await navigator.clipboard.writeText(content)
-    message.success('已复制到剪贴板')
+    message.success('Copied to clipboard')
   } catch {
-    message.error('复制失败')
+    message.error('Copy failed')
   }
 }
 
-// 查看文章详情
 const viewArticle = () => {
   router.push(`/article/${taskId.value}`)
 }
 
-// 重新创作
-const resetCreate = () => {
-  currentPhase.value = 'INPUT'
-  topic.value = ''
-  selectedStyle.value = ''
-  titleOptions.value = []
-  outline.value = []
-  isCreating.value = false
-  isCompleted.value = false
-  isStreaming.value = false
-  isOutlineStreaming.value = false
-  currentStep.value = 0
-  imageCount.value = 0
-  imageProgress.value = 0
-  outlineRaw.value = ''
-  confirmLoading.value = false
-  realtimeLogs.value = []
-  article.value = {
-    mainTitle: '',
-    subTitle: '',
-    content: '',
-    fullContent: '',
-    images: [],
+onMounted(async () => {
+  if (typeof route.query.topic === 'string') {
+    topic.value = route.query.topic
   }
-}
 
-// 组件挂载时检查路由参数
-onMounted(() => {
-  if (route.query.topic) {
-    topic.value = route.query.topic as string
+  const routeTaskId = typeof route.query.taskId === 'string' ? route.query.taskId : ''
+  const cachedTaskId = getStoredTaskId()
+  const restoreTaskId = routeTaskId || cachedTaskId
+  if (restoreTaskId) {
+    await restoreTask(restoreTaskId, true)
   }
 })
 
-// 组件卸载前关闭 SSE
 onBeforeUnmount(() => {
-  closeSSE(eventSource)
+  closeCurrentConnection()
 })
 </script>
 
