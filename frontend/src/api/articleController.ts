@@ -41,6 +41,14 @@ export async function getTaskMemory(
   })
 }
 
+/** 获取当前用户创作偏好 GET /article/user-preference */
+export async function getUserCreationPreference(options?: { [key: string]: any }) {
+  return request<API.BaseResponseUserCreationPreferenceVO>('/article/user-preference', {
+    method: 'GET',
+    ...(options || {}),
+  })
+}
+
 /** 获取节点回放快照 GET /article/node-replay/${param0} */
 export async function getNodeReplaySnapshots(
   params: API.getNodeReplaySnapshotsParams,

@@ -20,6 +20,7 @@ import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.model.vo.ArticleVO;
 import com.yupi.template.model.vo.NodeReplaySnapshotVO;
+import com.yupi.template.model.vo.UserCreationPreferenceVO;
 import com.yupi.template.service.ArticleAgentService;
 import com.yupi.template.service.ArticleMemoryService;
 import com.yupi.template.service.ArticleNodeReplayService;
@@ -66,7 +67,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Override
     public String createArticleTask(String topic, String style, List<String> enabledImageMethods, User loginUser) {
-        List<String> finalImageMethods = processImageMethods(enabledImageMethods, loginUser);
+        UserCreationPreferenceVO preference = articleMemoryService.getUserPreference(loginUser.getId());
+        String finalStyle = resolvePreferredStyle(style, preference);
+        List<String> finalImageMethods = processImageMethods(
+                resolvePreferredImageMethods(enabledImageMethods, preference),
+                loginUser
+        );
         validateImageMethods(finalImageMethods, loginUser);
 
         String taskId = IdUtil.simpleUUID();
@@ -74,7 +80,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setTaskId(taskId);
         article.setUserId(loginUser.getId());
         article.setTopic(topic);
-        article.setStyle(style);
+        article.setStyle(finalStyle);
         article.setEnabledImageMethods(finalImageMethods != null && !finalImageMethods.isEmpty()
                 ? GsonUtils.toJson(finalImageMethods) : null);
         article.setStatus(ArticleStatusEnum.PENDING.getValue());
@@ -83,7 +89,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         this.save(article);
         articleMemoryService.initializeTaskMemory(article);
 
-        log.info("Article task created, taskId={}, userId={}, style={}", taskId, loginUser.getId(), style);
+        log.info("Article task created, taskId={}, userId={}, style={}", taskId, loginUser.getId(), finalStyle);
         return taskId;
     }
 
@@ -115,6 +121,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     public ArticleTaskMemoryVO getTaskMemory(String taskId, User loginUser) {
         getArticleWithPermission(taskId, loginUser);
         return articleMemoryService.getTaskMemory(taskId);
+    }
+
+    @Override
+    public UserCreationPreferenceVO getUserCreationPreference(User loginUser) {
+        return articleMemoryService.getUserPreference(loginUser.getId());
     }
 
     @Override
@@ -480,6 +491,28 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private boolean isVipOrAdmin(User user) {
         return ADMIN_ROLE.equals(user.getUserRole()) || VIP_ROLE.equals(user.getUserRole());
+    }
+
+    private String resolvePreferredStyle(String style, UserCreationPreferenceVO preference) {
+        if (style != null && !style.isBlank()) {
+            return style;
+        }
+        if (preference == null || preference.getPreferredStyle() == null || preference.getPreferredStyle().isBlank()) {
+            return style;
+        }
+        return preference.getPreferredStyle();
+    }
+
+    private List<String> resolvePreferredImageMethods(List<String> enabledImageMethods,
+                                                      UserCreationPreferenceVO preference) {
+        if (enabledImageMethods != null && !enabledImageMethods.isEmpty()) {
+            return enabledImageMethods;
+        }
+        if (preference == null || preference.getPreferredImageMethods() == null
+                || preference.getPreferredImageMethods().isEmpty()) {
+            return enabledImageMethods;
+        }
+        return preference.getPreferredImageMethods();
     }
 
     private String mapRetryPhase(String node) {

@@ -12,6 +12,7 @@ import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.model.vo.ArticleVO;
 import com.yupi.template.model.vo.NodeReplaySnapshotVO;
+import com.yupi.template.model.vo.UserCreationPreferenceVO;
 
 import java.util.List;
 
@@ -33,6 +34,8 @@ public interface ArticleService extends IService<Article> {
     ArticleTaskSnapshotVO getTaskSnapshot(String taskId, User loginUser);
 
     ArticleTaskMemoryVO getTaskMemory(String taskId, User loginUser);
+
+    UserCreationPreferenceVO getUserCreationPreference(User loginUser);
 
     List<NodeReplaySnapshotVO> getNodeReplaySnapshots(String taskId, User loginUser);
 

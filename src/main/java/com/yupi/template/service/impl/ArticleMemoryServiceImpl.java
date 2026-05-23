@@ -11,6 +11,7 @@ import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.Article;
 import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.NodeExecutionLogVO;
+import com.yupi.template.model.vo.UserCreationPreferenceVO;
 import com.yupi.template.service.ArticleMemoryService;
 import com.yupi.template.service.ArticleNodeLogService;
 import com.yupi.template.utils.GsonUtils;
@@ -20,8 +21,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -34,12 +37,15 @@ import java.util.stream.Collectors;
 public class ArticleMemoryServiceImpl implements ArticleMemoryService {
 
     private static final String TASK_MEMORY_KEY_PREFIX = "article:task:memory:";
+    private static final String USER_PREFERENCE_KEY_PREFIX = "article:user:preference:";
     private static final long TASK_MEMORY_TTL_HOURS = 24L * 7;
+    private static final long USER_PREFERENCE_TTL_HOURS = 24L * 30;
     private static final int MAX_ACTIONS = 12;
     private static final int MAX_SIGNALS = 12;
     private static final int MAX_NODE_SNAPSHOTS = 12;
     private static final int MAX_SUMMARY_LENGTH = 200;
     private static final int MAX_HIGHLIGHTS = 4;
+    private static final int MAX_FAILURE_TAGS = 8;
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
@@ -132,7 +138,8 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             return;
         }
         ArticleTaskMemoryVO memory = getOrCreate(taskId);
-        mergeArticle(memory, findArticle(taskId));
+        Article article = findArticle(taskId);
+        mergeArticle(memory, article);
         mergeState(memory, state);
         mergeLatestNodes(memory, taskId);
         memory.setRecentErrorMessage(null);
@@ -145,6 +152,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         ));
         touch(memory);
         persist(memory);
+        persistUserPreference(memory, article, state);
     }
 
     @Override
@@ -153,7 +161,8 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             return;
         }
         ArticleTaskMemoryVO memory = getOrCreate(taskId);
-        mergeArticle(memory, findArticle(taskId));
+        Article article = findArticle(taskId);
+        mergeArticle(memory, article);
         memory.setCurrentPhase(phase);
         memory.setLastFailedNode(failedNode);
         memory.setRecentErrorMessage(errorMessage);
@@ -176,6 +185,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         }
         touch(memory);
         persist(memory);
+        persistFailurePreference(memory, article, phase, failedNode, errorMessage);
     }
 
     @Override
@@ -224,6 +234,14 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
     @Override
     public ArticleTaskMemoryVO getTaskMemory(String taskId) {
         return readMemory(taskId);
+    }
+
+    @Override
+    public UserCreationPreferenceVO getUserPreference(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        return readUserPreference(userId);
     }
 
     private ArticleTaskMemoryVO getOrCreate(String taskId) {
@@ -523,6 +541,10 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
 
     private String buildKey(String taskId) {
         return TASK_MEMORY_KEY_PREFIX + taskId;
+    }
+
+    private String buildUserPreferenceKey(Long userId) {
+        return USER_PREFERENCE_KEY_PREFIX + userId;
     }
 
     private void touch(ArticleTaskMemoryVO memory) {
@@ -962,6 +984,169 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private void persistUserPreference(ArticleTaskMemoryVO memory, Article article, ArticleState state) {
+        Long userId = memory != null ? memory.getUserId() : (article != null ? article.getUserId() : null);
+        if (userId == null) {
+            return;
+        }
+        UserCreationPreferenceVO preference = readUserPreference(userId);
+        if (preference == null) {
+            preference = UserCreationPreferenceVO.builder()
+                    .userId(userId)
+                    .styleUsage(new HashMap<>())
+                    .imageMethodUsage(new HashMap<>())
+                    .recentFailureTags(new ArrayList<>())
+                    .completedTaskCount(0)
+                    .build();
+        }
+        ensurePreferenceCollections(preference);
+
+        String preferredStyle = resolvePreferredStyle(memory, article, state);
+        if (!isBlank(preferredStyle)) {
+            preference.setPreferredStyle(preferredStyle);
+            incrementCounter(preference.getStyleUsage(), preferredStyle);
+        }
+
+        List<String> preferredMethods = resolvePreferredImageMethods(memory, article, state);
+        if (!preferredMethods.isEmpty()) {
+            preference.setPreferredImageMethods(preferredMethods);
+            for (String method : preferredMethods) {
+                incrementCounter(preference.getImageMethodUsage(), method);
+            }
+        }
+
+        int completedCount = preference.getCompletedTaskCount() == null ? 0 : preference.getCompletedTaskCount();
+        preference.setCompletedTaskCount(completedCount + 1);
+        preference.setUpdatedAt(System.currentTimeMillis());
+
+        redisTemplate.opsForValue().set(
+                buildUserPreferenceKey(userId),
+                GsonUtils.toJson(preference),
+                USER_PREFERENCE_TTL_HOURS,
+                TimeUnit.HOURS
+        );
+    }
+
+    private void persistFailurePreference(ArticleTaskMemoryVO memory,
+                                          Article article,
+                                          String phase,
+                                          String failedNode,
+                                          String errorMessage) {
+        Long userId = memory != null ? memory.getUserId() : (article != null ? article.getUserId() : null);
+        if (userId == null) {
+            return;
+        }
+        UserCreationPreferenceVO preference = readUserPreference(userId);
+        if (preference == null) {
+            preference = UserCreationPreferenceVO.builder()
+                    .userId(userId)
+                    .styleUsage(new HashMap<>())
+                    .imageMethodUsage(new HashMap<>())
+                    .recentFailureTags(new ArrayList<>())
+                    .completedTaskCount(0)
+                    .build();
+        }
+        ensurePreferenceCollections(preference);
+        String tag = firstNonBlank(failedNode, firstNonBlank(phase, firstNonBlank(errorMessage, "workflow_failure")));
+        if (!isBlank(tag)) {
+            List<String> tags = new ArrayList<>(preference.getRecentFailureTags());
+            tags.removeIf(item -> Objects.equals(item, tag));
+            tags.add(0, tag);
+            while (tags.size() > MAX_FAILURE_TAGS) {
+                tags.remove(tags.size() - 1);
+            }
+            preference.setRecentFailureTags(tags);
+            preference.setUpdatedAt(System.currentTimeMillis());
+            redisTemplate.opsForValue().set(
+                    buildUserPreferenceKey(userId),
+                    GsonUtils.toJson(preference),
+                    USER_PREFERENCE_TTL_HOURS,
+                    TimeUnit.HOURS
+            );
+        }
+    }
+
+    private UserCreationPreferenceVO readUserPreference(Long userId) {
+        Object cached = redisTemplate.opsForValue().get(buildUserPreferenceKey(userId));
+        if (cached == null) {
+            return null;
+        }
+        UserCreationPreferenceVO preference = cached instanceof UserCreationPreferenceVO userPreference
+                ? userPreference
+                : cached instanceof String json
+                ? GsonUtils.fromJsonSafe(json, UserCreationPreferenceVO.class)
+                : GsonUtils.fromJsonSafe(GsonUtils.toJson(cached), UserCreationPreferenceVO.class);
+        if (preference == null) {
+            return null;
+        }
+        ensurePreferenceCollections(preference);
+        return preference;
+    }
+
+    private void ensurePreferenceCollections(UserCreationPreferenceVO preference) {
+        if (preference.getStyleUsage() == null) {
+            preference.setStyleUsage(new HashMap<>());
+        }
+        if (preference.getImageMethodUsage() == null) {
+            preference.setImageMethodUsage(new HashMap<>());
+        }
+        if (preference.getRecentFailureTags() == null) {
+            preference.setRecentFailureTags(new ArrayList<>());
+        }
+        if (preference.getCompletedTaskCount() == null) {
+            preference.setCompletedTaskCount(0);
+        }
+    }
+
+    private String resolvePreferredStyle(ArticleTaskMemoryVO memory, Article article, ArticleState state) {
+        if (memory != null && !isBlank(memory.getStyle())) {
+            return memory.getStyle();
+        }
+        if (article != null && !isBlank(article.getStyle())) {
+            return article.getStyle();
+        }
+        return state != null ? state.getStyle() : null;
+    }
+
+    private List<String> resolvePreferredImageMethods(ArticleTaskMemoryVO memory, Article article, ArticleState state) {
+        if (memory != null && memory.getImageStrategy() != null
+                && memory.getImageStrategy().getMethods() != null
+                && !memory.getImageStrategy().getMethods().isEmpty()) {
+            return memory.getImageStrategy().getMethods().stream()
+                    .filter(Objects::nonNull)
+                    .filter(value -> !value.isBlank())
+                    .distinct()
+                    .collect(Collectors.toList());
+        }
+        if (state != null && state.getEnabledImageMethods() != null && !state.getEnabledImageMethods().isEmpty()) {
+            return state.getEnabledImageMethods().stream()
+                    .filter(Objects::nonNull)
+                    .filter(value -> !value.isBlank())
+                    .distinct()
+                    .collect(Collectors.toList());
+        }
+        if (article != null && !isBlank(article.getEnabledImageMethods())) {
+            List<String> methods = GsonUtils.fromJsonSafe(article.getEnabledImageMethods(),
+                    new TypeToken<List<String>>() {
+                    });
+            if (methods != null) {
+                return methods.stream()
+                        .filter(Objects::nonNull)
+                        .filter(value -> !value.isBlank())
+                        .distinct()
+                        .collect(Collectors.toList());
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    private void incrementCounter(Map<String, Integer> counterMap, String key) {
+        if (counterMap == null || isBlank(key)) {
+            return;
+        }
+        counterMap.put(key, counterMap.getOrDefault(key, 0) + 1);
     }
 
     @lombok.Data

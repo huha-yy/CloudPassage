@@ -22,6 +22,7 @@ import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.model.vo.ArticleVO;
 import com.yupi.template.model.vo.NodeReplaySnapshotVO;
+import com.yupi.template.model.vo.UserCreationPreferenceVO;
 import com.yupi.template.service.AgentLogService;
 import com.yupi.template.service.ArticleAsyncService;
 import com.yupi.template.service.ArticleService;
@@ -125,6 +126,13 @@ public class ArticleController {
                 ErrorCode.PARAMS_ERROR, "Task id cannot be empty");
         User loginUser = userService.getLoginUser(httpServletRequest);
         return ResultUtils.success(articleService.getTaskMemory(taskId, loginUser));
+    }
+
+    @GetMapping("/user-preference")
+    @Operation(summary = "Get current user creation preference")
+    public BaseResponse<UserCreationPreferenceVO> getUserCreationPreference(HttpServletRequest httpServletRequest) {
+        User loginUser = userService.getLoginUser(httpServletRequest);
+        return ResultUtils.success(articleService.getUserCreationPreference(loginUser));
     }
 
     @GetMapping("/node-replay/{taskId}")

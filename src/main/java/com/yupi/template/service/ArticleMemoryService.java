@@ -3,6 +3,7 @@ package com.yupi.template.service;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.Article;
 import com.yupi.template.model.vo.ArticleTaskMemoryVO;
+import com.yupi.template.model.vo.UserCreationPreferenceVO;
 
 import java.util.List;
 
@@ -26,4 +27,6 @@ public interface ArticleMemoryService {
     void recordNodeSnapshot(String taskId, String phase, String node, String status, ArticleState state);
 
     ArticleTaskMemoryVO getTaskMemory(String taskId);
+
+    UserCreationPreferenceVO getUserPreference(Long userId);
 }

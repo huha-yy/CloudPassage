@@ -746,6 +746,7 @@ import {
   confirmTitle,
   confirmOutline,
   getTaskSnapshot,
+  getUserCreationPreference,
   getExecutionLogs,
   resumeTask,
   retryNode,
@@ -1040,6 +1041,18 @@ const clearPersistedTaskId = () => {
     return
   }
   window.localStorage.removeItem(TASK_STORAGE_KEY)
+}
+
+const applyUserPreference = (preference?: API.UserCreationPreferenceVO) => {
+  if (!preference) {
+    return
+  }
+  if (!selectedStyle.value && preference.preferredStyle) {
+    selectedStyle.value = preference.preferredStyle
+  }
+  if (selectedImageMethods.value.length === 0 && preference.preferredImageMethods?.length) {
+    selectedImageMethods.value = [...preference.preferredImageMethods]
+  }
 }
 
 const syncRouteTaskId = async (value?: string) => {
@@ -1382,7 +1395,7 @@ const buildNodeConfigSummary = (log: API.NodeExecutionLogVO) => {
     parts.push(`Prompt: ${log.promptKey}@${log.promptVersion || 'default'}`)
   }
   if (log.model) {
-    parts.push(`妯″瀷: ${log.model}`)
+    parts.push(`模型: ${log.model}`)
   }
   if (log.temperature !== undefined && log.temperature !== null) {
     parts.push(`Temperature: ${formatConfigNumber(log.temperature)}`)
@@ -1393,7 +1406,7 @@ const buildNodeConfigSummary = (log: API.NodeExecutionLogVO) => {
   if (log.topP !== undefined && log.topP !== null) {
     parts.push(`TopP: ${formatConfigNumber(log.topP)}`)
   }
-  return parts.join(' 路 ')
+  return parts.join(' · ')
 }
 
 const canResumeCurrentTask = computed(() => {
@@ -1752,11 +1765,25 @@ onMounted(async () => {
     topic.value = route.query.topic
   }
 
+  if (typeof route.query.style === 'string' && route.query.style.trim()) {
+    selectedStyle.value = route.query.style.trim()
+  }
+
   const routeTaskId = typeof route.query.taskId === 'string' ? route.query.taskId : ''
   const cachedTaskId = getStoredTaskId()
   const restoreTaskId = routeTaskId || cachedTaskId
   if (restoreTaskId) {
     await restoreTask(restoreTaskId, true)
+    return
+  }
+
+  try {
+    const res = await getUserCreationPreference()
+    if (res.data.code === 0) {
+      applyUserPreference(res.data.data)
+    }
+  } catch (error) {
+    console.warn('Failed to load user creation preference:', error)
   }
 })
 

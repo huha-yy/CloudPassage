@@ -150,6 +150,17 @@
     updatedAt?: number
   }
 
+  type UserCreationPreferenceVO = {
+    userId?: number
+    preferredStyle?: string
+    preferredImageMethods?: string[]
+    styleUsage?: Record<string, any>
+    imageMethodUsage?: Record<string, any>
+    recentFailureTags?: string[]
+    completedTaskCount?: number
+    updatedAt?: number
+  }
+
   type MemorySummaryVO = {
     text?: string
     sourceCount?: number
@@ -236,6 +247,12 @@
   type BaseResponseArticleVO = {
     code?: number
     data?: ArticleVO
+    message?: string
+  }
+
+  type BaseResponseUserCreationPreferenceVO = {
+    code?: number
+    data?: UserCreationPreferenceVO
     message?: string
   }
 
