@@ -42,6 +42,9 @@
     temperature?: number
     maxTokens?: number
     topP?: number
+    decisionSource?: string
+    decisionReason?: string
+    decisionSummary?: string
   }
 
   type NodeReplaySnapshotVO = {
@@ -61,6 +64,9 @@
     temperature?: number
     maxTokens?: number
     topP?: number
+    decisionSource?: string
+    decisionReason?: string
+    decisionSummary?: string
     inputSummary?: string
     outputSummary?: string
     errorMessage?: string
@@ -124,6 +130,7 @@
     outlineRaw?: string
     content?: string
     fullContent?: string
+    enabledImageMethods?: string[]
     imageRequirements?: ImageRequirement[]
     images?: ImageItem[]
     updatedAt?: number
@@ -170,6 +177,9 @@
 
   type MemoryImageStrategyVO = {
     methods?: string[]
+    needImages?: boolean
+    decisionReason?: string
+    decisionSource?: string
     requirementCount?: number
     generatedCount?: number
     sources?: string[]

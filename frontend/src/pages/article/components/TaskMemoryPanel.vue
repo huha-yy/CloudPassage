@@ -71,6 +71,14 @@
           </div>
           <div class="summary-grid summary-grid--strategy">
             <div class="summary-card muted">
+              <span class="summary-label">是否需要图片</span>
+              <span class="summary-value">{{ getNeedImagesText(memory.imageStrategy?.needImages) }}</span>
+            </div>
+            <div class="summary-card muted">
+              <span class="summary-label">决策来源</span>
+              <span class="summary-value">{{ getDecisionSourceText(memory.imageStrategy?.decisionSource) }}</span>
+            </div>
+            <div class="summary-card muted">
               <span class="summary-label">启用方法</span>
               <span class="summary-value">{{ joinValues(memory.imageStrategy?.methods) }}</span>
             </div>
@@ -86,6 +94,10 @@
               <span class="summary-label">已生成数量</span>
               <span class="summary-value">{{ memory.imageStrategy?.generatedCount ?? 0 }}</span>
             </div>
+          </div>
+          <div v-if="memory.imageStrategy?.decisionReason" class="summary-block">
+            <div class="summary-block-title">路由原因</div>
+            <div class="summary-text">{{ formatDecisionReason(memory.imageStrategy?.decisionReason) }}</div>
           </div>
         </div>
 
@@ -336,6 +348,7 @@ const getNodeText = (node?: string) => {
     agent2_generate_outline: '大纲生成',
     ai_modify_outline: 'AI 修改大纲',
     agent3_generate_content: '正文生成',
+    image_strategy_router: '图片策略路由',
     agent4_analyze_image_requirements: '图片需求分析',
     agent5_generate_images: '图片生成',
     agent6_merge_content: '图文合并',
@@ -346,6 +359,45 @@ const getNodeText = (node?: string) => {
 
 const joinValues = (values?: string[]) => {
   return values && values.length > 0 ? values.join(' / ') : '--'
+}
+
+const getNeedImagesText = (needImages?: boolean) => {
+  if (needImages === true) {
+    return '需要'
+  }
+  if (needImages === false) {
+    return '不需要'
+  }
+  return '--'
+}
+
+const getDecisionSourceText = (source?: string) => {
+  const sourceMap: Record<string, string> = {
+    state_selection: '当前任务选择',
+    user_preference: '用户偏好记忆',
+    task_memory: '任务记忆复用',
+    default_policy: '默认策略',
+  }
+  return sourceMap[source || ''] || source || '--'
+}
+
+const formatDecisionReason = (reason?: string) => {
+  if (!reason) {
+    return '--'
+  }
+  const reasonMap: Record<string, string> = {
+    reuse_current_state_methods: '复用当前任务已选图片方法',
+    apply_user_preferred_methods: '应用用户历史偏好图片方法',
+    reuse_task_memory_methods: '复用当前任务沉淀的图片方法',
+    apply_default_image_policy: '应用系统默认图片策略',
+    diagram_signal_detected: '检测到流程 / 架构 / 图解类内容信号，优先图表型方法',
+    realistic_signal_detected: '检测到场景 / 产品 / 人物类内容信号，优先写实配图方法',
+    task_missing_fallback: '任务上下文缺失，回退到默认图片策略',
+  }
+  return reason
+    .split('|')
+    .map(item => reasonMap[item] || item)
+    .join('；')
 }
 
 const formatTimestamp = (value?: number) => {

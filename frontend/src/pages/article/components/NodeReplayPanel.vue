@@ -124,6 +124,24 @@
                 </span>
               </div>
 
+              <div
+                v-if="item.decisionSummary || item.decisionSource || item.decisionReason"
+                class="message-block"
+              >
+                <div class="block-label">路由决策</div>
+                <div v-if="item.decisionSummary" class="block-content">
+                  {{ item.decisionSummary }}
+                </div>
+                <div v-if="item.decisionSource || item.decisionReason" class="meta-line">
+                  <span v-if="item.decisionSource">
+                    来源：{{ getDecisionSourceText(item.decisionSource) }}
+                  </span>
+                  <span v-if="item.decisionReason">
+                    原因：{{ formatDecisionReason(item.decisionReason) }}
+                  </span>
+                </div>
+              </div>
+
               <div v-if="item.message" class="message-block">
                 <div class="block-label">执行说明</div>
                 <div class="block-content">{{ item.message }}</div>
@@ -409,6 +427,7 @@ const getNodeText = (node?: string) => {
     agent2_generate_outline: '大纲生成',
     ai_modify_outline: 'AI 修改大纲',
     agent3_generate_content: '正文生成',
+    image_strategy_router: '图片策略路由',
     agent4_analyze_image_requirements: '分析配图需求',
     agent5_generate_images: '图片生成',
     agent6_merge_content: '图文合成',
@@ -429,6 +448,35 @@ const formatConfigNumber = (value?: number | null) => {
     return '--'
   }
   return Number(value).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
+}
+
+const getDecisionSourceText = (source?: string) => {
+  const sourceMap: Record<string, string> = {
+    state_selection: '当前任务选择',
+    user_preference: '用户偏好记忆',
+    task_memory: '任务记忆复用',
+    default_policy: '默认策略',
+  }
+  return sourceMap[source || ''] || source || '--'
+}
+
+const formatDecisionReason = (reason?: string) => {
+  if (!reason) {
+    return '--'
+  }
+  const reasonMap: Record<string, string> = {
+    reuse_current_state_methods: '复用当前任务已选图片方法',
+    apply_user_preferred_methods: '应用用户历史偏好图片方法',
+    reuse_task_memory_methods: '复用当前任务沉淀的图片方法',
+    apply_default_image_policy: '应用系统默认图片策略',
+    diagram_signal_detected: '检测到流程 / 架构 / 图解类内容信号，优先图表型方法',
+    realistic_signal_detected: '检测到场景 / 产品 / 人物类内容信号，优先写实配图方法',
+    task_missing_fallback: '任务上下文缺失，回退到默认图片策略',
+  }
+  return reason
+    .split('|')
+    .map(item => reasonMap[item] || item)
+    .join('；')
 }
 
 const hasConfig = (item: API.NodeReplaySnapshotVO) => {
