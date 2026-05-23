@@ -109,6 +109,25 @@
                             <span class="duration">{{ log.elapsedMs ?? 0 }}ms</span>
                           </div>
                           <div class="timeline-time">{{ formatNodeTime(log.timestamp) }}</div>
+                          <div v-if="hasNodeConfig(log)" class="timeline-config">
+                            <span v-if="log.model" class="config-chip">{{ log.model }}</span>
+                            <span v-if="log.promptKey" class="config-chip">
+                              {{ log.promptKey }}@{{ log.promptVersion || 'default' }}
+                            </span>
+                            <span
+                              v-if="log.temperature !== undefined && log.temperature !== null"
+                              class="config-chip"
+                            >
+                              Temp {{ formatConfigNumber(log.temperature) }}
+                            </span>
+                            <span v-if="log.maxTokens" class="config-chip">Max {{ log.maxTokens }}</span>
+                            <span v-if="log.topP !== undefined && log.topP !== null" class="config-chip">
+                              TopP {{ formatConfigNumber(log.topP) }}
+                            </span>
+                          </div>
+                          <div v-if="buildNodeConfigSummary(log)" class="timeline-config-summary">
+                            {{ buildNodeConfigSummary(log) }}
+                          </div>
                           <div v-if="log.message" class="timeline-message">
                             {{ log.message }}
                           </div>
@@ -157,6 +176,16 @@
           </div>
 
           <a-divider v-if="hasExecutionObservability" />
+
+          <div v-if="article.taskId" class="memory-section">
+            <NodeReplayPanel
+              :task-id="article.taskId"
+              title="节点调试面板"
+              subtitle="查看节点输入输出快照、模型参数、错误信息与可回放状态"
+            />
+          </div>
+
+          <a-divider v-if="article.taskId" />
 
           <div v-if="article.taskId" class="memory-section">
             <TaskMemoryPanel
@@ -243,6 +272,7 @@ import {
 import { getArticle, getExecutionLogs } from '@/api/articleController'
 import { marked } from 'marked'
 import dayjs from 'dayjs'
+import NodeReplayPanel from './components/NodeReplayPanel.vue'
 import TaskMemoryPanel from './components/TaskMemoryPanel.vue'
 
 const router = useRouter()
@@ -374,6 +404,43 @@ const formatDate = (date: string) => {
 const formatNodeTime = (timestamp?: number) => {
   if (!timestamp) return '--'
   return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
+}
+
+const formatConfigNumber = (value?: number | null) => {
+  if (value === undefined || value === null || Number.isNaN(Number(value))) {
+    return '--'
+  }
+  return Number(value).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
+}
+
+const hasNodeConfig = (log: API.NodeExecutionLogVO) => {
+  return !!(
+    log.model ||
+    log.promptKey ||
+    log.temperature !== undefined ||
+    log.maxTokens !== undefined ||
+    log.topP !== undefined
+  )
+}
+
+const buildNodeConfigSummary = (log: API.NodeExecutionLogVO) => {
+  const parts: string[] = []
+  if (log.promptKey) {
+    parts.push(`Prompt: ${log.promptKey}@${log.promptVersion || 'default'}`)
+  }
+  if (log.model) {
+    parts.push(`模型: ${log.model}`)
+  }
+  if (log.temperature !== undefined && log.temperature !== null) {
+    parts.push(`Temperature: ${formatConfigNumber(log.temperature)}`)
+  }
+  if (log.maxTokens) {
+    parts.push(`MaxTokens: ${log.maxTokens}`)
+  }
+  if (log.topP !== undefined && log.topP !== null) {
+    parts.push(`TopP: ${formatConfigNumber(log.topP)}`)
+  }
+  return parts.join(' · ')
 }
 
 const getStatusColor = (status: string) => {
@@ -838,6 +905,33 @@ onMounted(() => {
           .timeline-time {
             font-size: 12px;
             color: var(--color-text-muted);
+          }
+
+          .timeline-config {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+          }
+
+          .config-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: var(--radius-full);
+            background: rgba(15, 23, 42, 0.05);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            color: var(--color-text-secondary);
+            font-size: 11px;
+            line-height: 1.4;
+          }
+
+          .timeline-config-summary {
+            margin-top: 8px;
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--color-text-muted);
+            word-break: break-word;
           }
 
           .timeline-message {

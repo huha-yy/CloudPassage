@@ -3,7 +3,9 @@ package com.yupi.template.service.impl;
 import com.google.gson.reflect.TypeToken;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.Article;
+import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.service.ArticleService;
+import com.yupi.template.service.ArticleTaskSnapshotService;
 import com.yupi.template.service.ArticleWorkflowStateFactory;
 import com.yupi.template.utils.GsonUtils;
 import jakarta.annotation.Resource;
@@ -20,6 +22,9 @@ public class ArticleWorkflowStateFactoryImpl implements ArticleWorkflowStateFact
 
     @Resource
     private ArticleService articleService;
+
+    @Resource
+    private ArticleTaskSnapshotService articleTaskSnapshotService;
 
     @Override
     public ArticleState buildFromArticle(String taskId) {
@@ -41,33 +46,68 @@ public class ArticleWorkflowStateFactoryImpl implements ArticleWorkflowStateFact
                     });
             state.setEnabledImageMethods(enabledMethods);
         }
-        if (article.getMainTitle() != null || article.getSubTitle() != null) {
+
+        ArticleTaskSnapshotVO snapshot = articleTaskSnapshotService.getSnapshot(taskId, article);
+        if (snapshot != null) {
+            overlaySnapshot(state, snapshot);
+        }
+
+        if (state.getTitle() == null && (article.getMainTitle() != null || article.getSubTitle() != null)) {
             ArticleState.TitleResult title = new ArticleState.TitleResult();
             title.setMainTitle(article.getMainTitle());
             title.setSubTitle(article.getSubTitle());
             state.setTitle(title);
         }
-        if (article.getTitleOptions() != null) {
-            state.setTitleOptions(GsonUtils.fromJson(article.getTitleOptions(),
-                    new TypeToken<List<ArticleState.TitleOption>>() {
-                    }));
-        }
-        if (article.getOutline() != null) {
-            List<ArticleState.OutlineSection> sections = GsonUtils.fromJson(article.getOutline(),
-                    new TypeToken<List<ArticleState.OutlineSection>>() {
-                    });
-            ArticleState.OutlineResult outline = new ArticleState.OutlineResult();
-            outline.setSections(sections);
-            state.setOutline(outline);
-            state.setOutlineRaw(GsonUtils.toJson(Map.of("sections", sections)));
-        }
-        state.setContent(article.getContent());
-        state.setFullContent(article.getFullContent());
-        if (article.getImages() != null) {
-            state.setImages(GsonUtils.fromJson(article.getImages(),
-                    new TypeToken<List<ArticleState.ImageResult>>() {
-                    }));
-        }
         return state;
+    }
+
+    private void overlaySnapshot(ArticleState state, ArticleTaskSnapshotVO snapshot) {
+        if (snapshot == null) {
+            return;
+        }
+        if (snapshot.getTopic() != null) {
+            state.setTopic(snapshot.getTopic());
+        }
+        if (snapshot.getStyle() != null) {
+            state.setStyle(snapshot.getStyle());
+        }
+        if (snapshot.getUserDescription() != null) {
+            state.setUserDescription(snapshot.getUserDescription());
+        }
+        if (snapshot.getPhase() != null) {
+            state.setPhase(snapshot.getPhase());
+        }
+        if (snapshot.getProgress() != null) {
+            state.setProgress(snapshot.getProgress());
+        }
+        if (snapshot.getErrorMessage() != null) {
+            state.setErrorMessage(snapshot.getErrorMessage());
+        }
+        if (snapshot.getTitleOptions() != null) {
+            state.setTitleOptions(snapshot.getTitleOptions());
+        }
+        if (snapshot.getTitle() != null) {
+            state.setTitle(snapshot.getTitle());
+        }
+        if (snapshot.getOutline() != null) {
+            ArticleState.OutlineResult outline = new ArticleState.OutlineResult();
+            outline.setSections(snapshot.getOutline());
+            state.setOutline(outline);
+        }
+        if (snapshot.getOutlineRaw() != null) {
+            state.setOutlineRaw(snapshot.getOutlineRaw());
+        }
+        if (snapshot.getContent() != null) {
+            state.setContent(snapshot.getContent());
+        }
+        if (snapshot.getFullContent() != null) {
+            state.setFullContent(snapshot.getFullContent());
+        }
+        if (snapshot.getImageRequirements() != null) {
+            state.setImageRequirements(snapshot.getImageRequirements());
+        }
+        if (snapshot.getImages() != null) {
+            state.setImages(snapshot.getImages());
+        }
     }
 }

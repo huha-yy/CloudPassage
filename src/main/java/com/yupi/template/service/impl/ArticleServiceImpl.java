@@ -19,8 +19,10 @@ import com.yupi.template.model.enums.ImageMethodEnum;
 import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.model.vo.ArticleVO;
+import com.yupi.template.model.vo.NodeReplaySnapshotVO;
 import com.yupi.template.service.ArticleAgentService;
 import com.yupi.template.service.ArticleMemoryService;
+import com.yupi.template.service.ArticleNodeReplayService;
 import com.yupi.template.service.ArticleService;
 import com.yupi.template.service.ArticleTaskSnapshotService;
 import com.yupi.template.service.QuotaService;
@@ -58,6 +60,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Resource
     private ArticleMemoryService articleMemoryService;
+
+    @Resource
+    private ArticleNodeReplayService articleNodeReplayService;
 
     @Override
     public String createArticleTask(String topic, String style, List<String> enabledImageMethods, User loginUser) {
@@ -113,6 +118,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     @Override
+    public List<NodeReplaySnapshotVO> getNodeReplaySnapshots(String taskId, User loginUser) {
+        getArticleWithPermission(taskId, loginUser);
+        return articleNodeReplayService.getSnapshots(taskId);
+    }
+
+    @Override
     public Page<ArticleVO> listArticleByPage(ArticleQueryRequest request, User loginUser) {
         long current = request.getPageNum();
         long size = request.getPageSize();
@@ -142,6 +153,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         checkArticlePermission(article, loginUser);
         if (article.getTaskId() != null) {
             articleTaskSnapshotService.clearSnapshot(article.getTaskId());
+            articleNodeReplayService.clear(article.getTaskId());
         }
         return this.removeById(id);
     }
@@ -389,7 +401,13 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         ArticleTaskSnapshotVO snapshot = articleTaskSnapshotService.getSnapshot(taskId, article);
         ThrowUtils.throwIf(snapshot == null, ErrorCode.NOT_FOUND_ERROR, "Task snapshot not found");
 
-        String mappedPhase = mapRetryPhase(node);
+        NodeReplaySnapshotVO latestReplaySnapshot = articleNodeReplayService.getLatestSnapshot(taskId, node);
+        ThrowUtils.throwIf(latestReplaySnapshot == null, ErrorCode.OPERATION_ERROR,
+                "Current node has no replay snapshot");
+        ThrowUtils.throwIf(Boolean.FALSE.equals(latestReplaySnapshot.getReplayable()), ErrorCode.OPERATION_ERROR,
+                "Current node is still running and cannot be retried");
+
+        String mappedPhase = firstNonBlank(latestReplaySnapshot.getPhase(), mapRetryPhase(node));
         ThrowUtils.throwIf(mappedPhase == null, ErrorCode.OPERATION_ERROR, "Current node does not support retry");
 
         String snapshotPhase = snapshot.getPhase();
@@ -474,5 +492,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     ArticlePhaseEnum.CONTENT_GENERATING.getValue();
             default -> null;
         };
+    }
+
+    private String firstNonBlank(String preferred, String fallback) {
+        return preferred != null && !preferred.isBlank() ? preferred : fallback;
     }
 }

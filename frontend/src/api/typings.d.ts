@@ -36,6 +36,36 @@
     message?: string
     elapsedMs?: number
     timestamp?: number
+    promptKey?: string
+    promptVersion?: string
+    model?: string
+    temperature?: number
+    maxTokens?: number
+    topP?: number
+  }
+
+  type NodeReplaySnapshotVO = {
+    snapshotId?: string
+    snapshotVersion?: string
+    taskId?: string
+    phase?: string
+    node?: string
+    status?: string
+    message?: string
+    startedAt?: number
+    finishedAt?: number
+    elapsedMs?: number
+    promptKey?: string
+    promptVersion?: string
+    model?: string
+    temperature?: number
+    maxTokens?: number
+    topP?: number
+    inputSummary?: string
+    outputSummary?: string
+    errorMessage?: string
+    retryCount?: number
+    replayable?: boolean
   }
 
   type ArticleAiModifyOutlineRequest = {
@@ -221,6 +251,12 @@
     message?: string
   }
 
+  type BaseResponseListNodeReplaySnapshotVO = {
+    code?: number
+    data?: NodeReplaySnapshotVO[]
+    message?: string
+  }
+
   type BaseResponseListPaymentRecord = {
     code?: number
     data?: PaymentRecord[]
@@ -302,6 +338,10 @@
   }
 
   type getTaskMemoryParams = {
+    taskId: string
+  }
+
+  type getNodeReplaySnapshotsParams = {
     taskId: string
   }
 

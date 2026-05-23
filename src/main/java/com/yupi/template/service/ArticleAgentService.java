@@ -3,16 +3,16 @@ package com.yupi.template.service;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
 import com.google.gson.reflect.TypeToken;
 import com.yupi.template.annotation.AgentExecution;
-import com.yupi.template.constant.PromptConstant;
+import com.yupi.template.agent.agents.AgentPromptSupport;
+import com.yupi.template.agent.config.AgentProfile;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.dto.image.ImageRequest;
-import com.yupi.template.model.enums.ArticleStyleEnum;
 import com.yupi.template.model.enums.ImageMethodEnum;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
+import com.yupi.template.model.vo.NodeExecutionMetadata;
 import com.yupi.template.utils.GsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.aop.framework.AopContext;
@@ -25,13 +25,16 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Core article agent workflow service.
- *
- * @author <a href="XXXX">呼哈设计</a>
+ * Legacy article agent workflow service.
  */
 @Service
 @Slf4j
 public class ArticleAgentService {
+
+    private static final String TITLE_PROFILE = "title-generator";
+    private static final String OUTLINE_PROFILE = "outline-generator";
+    private static final String CONTENT_PROFILE = "content-generator";
+    private static final String IMAGE_PROFILE = "image-analyzer";
 
     @Resource
     private DashScopeChatModel chatModel;
@@ -42,10 +45,13 @@ public class ArticleAgentService {
     @Resource
     private ArticleStructuredOutputService articleStructuredOutputService;
 
+    @Resource
+    private AgentPromptSupport agentPromptSupport;
+
     public void executePhase1_GenerateTitles(ArticleState state, Consumer<String> streamHandler) {
         try {
             log.info("Phase 1 generate titles started, taskId={}", state.getTaskId());
-            getProxy().agent1GenerateTitleOptions(state);
+            getProxy().agent1GenerateTitleOptions(state, buildMetadataForProfile(TITLE_PROFILE, "agent1_title", false, true));
             streamHandler.accept(SseMessageTypeEnum.AGENT1_COMPLETE.getValue());
             log.info("Phase 1 generate titles finished, taskId={}, optionsCount={}",
                     state.getTaskId(), state.getTitleOptions().size());
@@ -58,7 +64,8 @@ public class ArticleAgentService {
     public void executePhase2_GenerateOutline(ArticleState state, Consumer<String> streamHandler) {
         try {
             log.info("Phase 2 generate outline started, taskId={}", state.getTaskId());
-            getProxy().agent2GenerateOutline(state, streamHandler);
+            getProxy().agent2GenerateOutline(state, streamHandler,
+                    buildMetadataForProfile(OUTLINE_PROFILE, "agent2_outline", true, true));
             streamHandler.accept(SseMessageTypeEnum.AGENT2_COMPLETE.getValue());
             log.info("Phase 2 generate outline finished, taskId={}", state.getTaskId());
         } catch (Exception e) {
@@ -71,11 +78,13 @@ public class ArticleAgentService {
         try {
             ArticleAgentService proxy = getProxy();
             log.info("Phase 3 generate content started, taskId={}", state.getTaskId());
-            proxy.agent3GenerateContent(state, streamHandler);
+            proxy.agent3GenerateContent(state, streamHandler,
+                    buildMetadataForProfile(CONTENT_PROFILE, "agent3_content", true, false));
             streamHandler.accept(SseMessageTypeEnum.AGENT3_COMPLETE.getValue());
 
             log.info("Phase 3 analyze image requirements started, taskId={}", state.getTaskId());
-            proxy.agent4AnalyzeImageRequirements(state);
+            proxy.agent4AnalyzeImageRequirements(state,
+                    buildMetadataForProfile(IMAGE_PROFILE, "agent4_image", false, true));
             streamHandler.accept(SseMessageTypeEnum.AGENT4_COMPLETE.getValue());
 
             log.info("Phase 3 generate images started, taskId={}", state.getTaskId());
@@ -93,40 +102,43 @@ public class ArticleAgentService {
     }
 
     @AgentExecution(value = "agent1_generate_titles", description = "生成标题方案")
-    public void agent1GenerateTitleOptions(ArticleState state) {
-        String prompt = PromptConstant.AGENT1_TITLE_PROMPT
+    public void agent1GenerateTitleOptions(ArticleState state, NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(TITLE_PROFILE, "agent1_title", false, true);
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{topic}", state.getTopic())
-                + getStylePrompt(state.getStyle());
+                + agentPromptSupport.getStylePrompt(state.getStyle());
 
         List<ArticleState.TitleOption> titleOptions = articleStructuredOutputService.execute(
-                prompt,
+                promptContent,
                 "titleOptions",
-                this::callLlm,
+                prompt -> callLlm(prompt, profile),
                 new TypeToken<List<ArticleState.TitleOption>>() {
                 },
                 this::isValidTitleOptions
         );
         state.setTitleOptions(titleOptions);
-        log.info("Title options generated, count={}", titleOptions.size());
+        log.info("Title options generated, count={}, model={}, promptKey={}, promptVersion={}",
+                titleOptions.size(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
     }
 
     @AgentExecution(value = "agent2_generate_outline", description = "生成文章大纲")
-    public void agent2GenerateOutline(ArticleState state, Consumer<String> streamHandler) {
+    public void agent2GenerateOutline(ArticleState state, Consumer<String> streamHandler, NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(OUTLINE_PROFILE, "agent2_outline", true, true);
         String descriptionSection = "";
         if (state.getUserDescription() != null && !state.getUserDescription().trim().isEmpty()) {
-            descriptionSection = PromptConstant.AGENT2_DESCRIPTION_SECTION
+            descriptionSection = agentPromptSupport.getPromptContent("agent2_description_section", profile.getPromptVersion())
                     .replace("{userDescription}", state.getUserDescription());
         }
 
-        String prompt = PromptConstant.AGENT2_OUTLINE_PROMPT
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{mainTitle}", state.getTitle().getMainTitle())
                 .replace("{subTitle}", state.getTitle().getSubTitle())
                 .replace("{descriptionSection}", descriptionSection)
-                + getStylePrompt(state.getStyle());
+                + agentPromptSupport.getStylePrompt(state.getStyle());
 
-        String content = callLlmWithStreaming(prompt, streamHandler, SseMessageTypeEnum.AGENT2_STREAMING);
+        String content = callLlmWithStreaming(promptContent, profile, streamHandler, SseMessageTypeEnum.AGENT2_STREAMING);
         ArticleState.OutlineResult outlineResult = articleStructuredOutputService.execute(
-                prompt,
+                promptContent,
                 "outlineResult",
                 ignored -> content,
                 ArticleState.OutlineResult.class,
@@ -134,38 +146,42 @@ public class ArticleAgentService {
         );
         state.setOutline(outlineResult);
         state.setOutlineRaw(content);
-        log.info("Outline generated, sections={}", outlineResult.getSections().size());
+        log.info("Outline generated, sections={}, model={}, promptKey={}, promptVersion={}",
+                outlineResult.getSections().size(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
     }
 
     @AgentExecution(value = "agent3_generate_content", description = "生成文章正文")
-    public void agent3GenerateContent(ArticleState state, Consumer<String> streamHandler) {
+    public void agent3GenerateContent(ArticleState state, Consumer<String> streamHandler, NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(CONTENT_PROFILE, "agent3_content", true, false);
         String outlineText = GsonUtils.toJson(state.getOutline().getSections());
-        String prompt = PromptConstant.AGENT3_CONTENT_PROMPT
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{mainTitle}", state.getTitle().getMainTitle())
                 .replace("{subTitle}", state.getTitle().getSubTitle())
                 .replace("{outline}", outlineText)
-                + getStylePrompt(state.getStyle());
+                + agentPromptSupport.getStylePrompt(state.getStyle());
 
-        String content = callLlmWithStreaming(prompt, streamHandler, SseMessageTypeEnum.AGENT3_STREAMING);
+        String content = callLlmWithStreaming(promptContent, profile, streamHandler, SseMessageTypeEnum.AGENT3_STREAMING);
         state.setContent(content);
-        log.info("Content generated, length={}", content.length());
+        log.info("Content generated, length={}, model={}, promptKey={}, promptVersion={}",
+                content.length(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
     }
 
     @AgentExecution(value = "agent4_analyze_image_requirements", description = "分析配图需求")
-    public void agent4AnalyzeImageRequirements(ArticleState state) {
+    public void agent4AnalyzeImageRequirements(ArticleState state, NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(IMAGE_PROFILE, "agent4_image", false, true);
         String availableMethods = buildAvailableMethodsDescription(state.getEnabledImageMethods());
         String methodUsageGuide = buildMethodUsageGuide(state.getEnabledImageMethods());
 
-        String prompt = PromptConstant.AGENT4_IMAGE_REQUIREMENTS_PROMPT
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{mainTitle}", state.getTitle().getMainTitle())
                 .replace("{content}", state.getContent())
                 .replace("{availableMethods}", availableMethods)
                 .replace("{methodUsageGuide}", methodUsageGuide);
 
         ArticleState.Agent4Result agent4Result = articleStructuredOutputService.execute(
-                prompt,
+                promptContent,
                 "imageRequirements",
-                this::callLlm,
+                prompt -> callLlm(prompt, profile),
                 ArticleState.Agent4Result.class,
                 this::isValidAgent4Result
         );
@@ -176,8 +192,9 @@ public class ArticleAgentService {
                 state.getEnabledImageMethods()
         );
         state.setImageRequirements(validatedRequirements);
-        log.info("Image requirements analyzed, rawCount={}, validatedCount={}",
-                agent4Result.getImageRequirements().size(), validatedRequirements.size());
+        log.info("Image requirements analyzed, rawCount={}, validatedCount={}, model={}, promptKey={}, promptVersion={}",
+                agent4Result.getImageRequirements().size(), validatedRequirements.size(),
+                profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
     }
 
     @AgentExecution(value = "agent5_generate_images", description = "生成配图")
@@ -227,14 +244,19 @@ public class ArticleAgentService {
         log.info("Merge content finished, length={}", fullContent.length());
     }
 
-    private String callLlm(String prompt) {
-        ChatResponse response = chatModel.call(new Prompt(new UserMessage(prompt)));
+    private String callLlm(String promptContent, AgentProfile profile) {
+        Prompt prompt = agentPromptSupport.buildPrompt(promptContent, profile, false);
+        ChatResponse response = chatModel.call(prompt);
         return response.getResult().getOutput().getText();
     }
 
-    private String callLlmWithStreaming(String prompt, Consumer<String> streamHandler, SseMessageTypeEnum messageType) {
+    private String callLlmWithStreaming(String promptContent,
+                                        AgentProfile profile,
+                                        Consumer<String> streamHandler,
+                                        SseMessageTypeEnum messageType) {
         StringBuilder contentBuilder = new StringBuilder();
-        Flux<ChatResponse> streamResponse = chatModel.stream(new Prompt(new UserMessage(prompt)));
+        Prompt prompt = agentPromptSupport.buildPrompt(promptContent, profile, true);
+        Flux<ChatResponse> streamResponse = chatModel.stream(prompt);
         streamResponse
                 .doOnNext(response -> {
                     String chunk = response.getResult().getOutput().getText();
@@ -356,42 +378,50 @@ public class ArticleAgentService {
         return validatedRequirements;
     }
 
-    private String getStylePrompt(String style) {
-        if (style == null || style.isEmpty()) {
-            return "";
-        }
-        ArticleStyleEnum styleEnum = ArticleStyleEnum.getEnumByValue(style);
-        if (styleEnum == null) {
-            return "";
-        }
-        return switch (styleEnum) {
-            case TECH -> PromptConstant.STYLE_TECH_PROMPT;
-            case EMOTIONAL -> PromptConstant.STYLE_EMOTIONAL_PROMPT;
-            case EDUCATIONAL -> PromptConstant.STYLE_EDUCATIONAL_PROMPT;
-            case HUMOROUS -> PromptConstant.STYLE_HUMOROUS_PROMPT;
-        };
-    }
-
     @AgentExecution(value = "ai_modify_outline", description = "AI修改大纲")
     public List<ArticleState.OutlineSection> aiModifyOutline(String mainTitle, String subTitle,
                                                              List<ArticleState.OutlineSection> currentOutline,
-                                                             String modifySuggestion) {
+                                                             String modifySuggestion,
+                                                             NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(OUTLINE_PROFILE, "ai_modify_outline", false, true);
         String currentOutlineJson = GsonUtils.toJson(currentOutline);
-        String prompt = PromptConstant.AI_MODIFY_OUTLINE_PROMPT
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{mainTitle}", mainTitle)
                 .replace("{subTitle}", subTitle)
                 .replace("{currentOutline}", currentOutlineJson)
                 .replace("{modifySuggestion}", modifySuggestion);
 
         ArticleState.OutlineResult outlineResult = articleStructuredOutputService.execute(
-                prompt,
+                promptContent,
                 "modifiedOutline",
-                this::callLlm,
+                prompt -> callLlm(prompt, profile),
                 ArticleState.OutlineResult.class,
                 this::isValidOutlineResult
         );
-        log.info("AI outline modified, sectionsCount={}", outlineResult.getSections().size());
+        log.info("AI outline modified, sectionsCount={}, model={}, promptKey={}, promptVersion={}",
+                outlineResult.getSections().size(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
         return outlineResult.getSections();
+    }
+
+    public List<ArticleState.OutlineSection> aiModifyOutline(String mainTitle, String subTitle,
+                                                             List<ArticleState.OutlineSection> currentOutline,
+                                                             String modifySuggestion) {
+        return getProxy().aiModifyOutline(mainTitle, subTitle, currentOutline, modifySuggestion,
+                buildMetadataForProfile(OUTLINE_PROFILE, "ai_modify_outline", false, true));
+    }
+
+    private AgentProfile resolveProfile(String profileName,
+                                        String defaultPromptKey,
+                                        boolean defaultStreaming,
+                                        boolean defaultStructuredOutput) {
+        return agentPromptSupport.resolveProfile(profileName, defaultPromptKey, defaultStreaming, defaultStructuredOutput);
+    }
+
+    private NodeExecutionMetadata buildMetadataForProfile(String profileName,
+                                                          String defaultPromptKey,
+                                                          boolean defaultStreaming,
+                                                          boolean defaultStructuredOutput) {
+        return agentPromptSupport.toMetadata(resolveProfile(profileName, defaultPromptKey, defaultStreaming, defaultStructuredOutput));
     }
 
     private boolean isValidTitleOptions(List<ArticleState.TitleOption> titleOptions) {

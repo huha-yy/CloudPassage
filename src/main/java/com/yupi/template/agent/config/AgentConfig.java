@@ -1,6 +1,5 @@
 package com.yupi.template.agent.config;
 
-import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
 import com.alibaba.cloud.ai.graph.checkpoint.savers.MemorySaver;
 import lombok.Getter;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,33 +7,54 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Agent 配置类
- * 提供 Agent 相关的全局配置和共享组件
- *
- * @author AI Passage Creator
+ * Shared agent runtime configuration.
  */
 @Configuration
 @Getter
 public class AgentConfig {
 
     /**
-     * 是否启用多智能体编排器
-     * true: 使用新的 Spring AI Alibaba 多智能体编排
-     * false: 使用原有的 ArticleAgentService
+     * Whether to use the StateGraph-based orchestrator or the legacy workflow.
      */
     @Value("${article.agent.orchestrator.enabled:true}")
     private boolean orchestratorEnabled;
 
     /**
-     * Agent 最大迭代次数
+     * Maximum orchestrator iterations.
      */
     @Value("${article.agent.max-iterations:10}")
     private int maxIterations;
 
     /**
-     * 提供内存状态保存器（单例）
-     * 用于 Agent 对话记忆管理
+     * Default model name used when a node profile does not specify one.
      */
+    @Value("${article.agent.defaults.model:qwen-plus}")
+    private String defaultModel;
+
+    /**
+     * Default sampling temperature used when a node profile does not specify one.
+     */
+    @Value("${article.agent.defaults.temperature:0.7}")
+    private Double defaultTemperature;
+
+    /**
+     * Default max token limit used when a node profile does not specify one.
+     */
+    @Value("${article.agent.defaults.max-tokens:4000}")
+    private Integer defaultMaxTokens;
+
+    /**
+     * Default topP used when a node profile does not specify one.
+     */
+    @Value("${article.agent.defaults.top-p:0.9}")
+    private Double defaultTopP;
+
+    /**
+     * Default prompt version used when a node profile does not specify one.
+     */
+    @Value("${article.agent.defaults.prompt-version:v1}")
+    private String defaultPromptVersion;
+
     @Bean
     public MemorySaver memorySaver() {
         return new MemorySaver();

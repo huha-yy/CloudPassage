@@ -1,36 +1,26 @@
-package com.yupi.template.model.vo;
+package com.yupi.template.agent.config;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * Lightweight node-level execution log for workflow observability.
+ * Resolved prompt and model profile for a workflow node.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
-public class NodeExecutionLogVO implements Serializable {
+public class AgentProfile implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
-    private String taskId;
-
-    private String phase;
-
-    private String node;
-
-    private String status;
-
-    private String message;
-
-    private Integer elapsedMs;
-
-    private Long timestamp;
+    private String name;
 
     private String promptKey;
 
@@ -43,4 +33,8 @@ public class NodeExecutionLogVO implements Serializable {
     private Integer maxTokens;
 
     private Double topP;
+
+    private Boolean structuredOutput;
+
+    private Boolean streaming;
 }

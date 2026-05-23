@@ -5,32 +5,20 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * Lightweight node-level execution log for workflow observability.
+ * Optional metadata attached to node execution logs.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class NodeExecutionLogVO implements Serializable {
+public class NodeExecutionMetadata implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
-
-    private String taskId;
-
-    private String phase;
-
-    private String node;
-
-    private String status;
-
-    private String message;
-
-    private Integer elapsedMs;
-
-    private Long timestamp;
 
     private String promptKey;
 

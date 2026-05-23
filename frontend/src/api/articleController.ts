@@ -41,6 +41,19 @@ export async function getTaskMemory(
   })
 }
 
+/** 获取节点回放快照 GET /article/node-replay/${param0} */
+export async function getNodeReplaySnapshots(
+  params: API.getNodeReplaySnapshotsParams,
+  options?: { [key: string]: any }
+) {
+  const { taskId: param0, ...queryParams } = params
+  return request<API.BaseResponseListNodeReplaySnapshotVO>(`/article/node-replay/${param0}`, {
+    method: 'GET',
+    params: { ...queryParams },
+    ...(options || {}),
+  })
+}
+
 /** AI 修改大纲 POST /article/ai-modify-outline */
 export async function aiModifyOutline(
   body: API.ArticleAiModifyOutlineRequest,

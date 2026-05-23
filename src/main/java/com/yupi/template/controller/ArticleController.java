@@ -21,6 +21,7 @@ import com.yupi.template.model.vo.AgentExecutionStats;
 import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.model.vo.ArticleVO;
+import com.yupi.template.model.vo.NodeReplaySnapshotVO;
 import com.yupi.template.service.AgentLogService;
 import com.yupi.template.service.ArticleAsyncService;
 import com.yupi.template.service.ArticleService;
@@ -124,6 +125,16 @@ public class ArticleController {
                 ErrorCode.PARAMS_ERROR, "Task id cannot be empty");
         User loginUser = userService.getLoginUser(httpServletRequest);
         return ResultUtils.success(articleService.getTaskMemory(taskId, loginUser));
+    }
+
+    @GetMapping("/node-replay/{taskId}")
+    @Operation(summary = "Get node replay snapshots")
+    public BaseResponse<List<NodeReplaySnapshotVO>> getNodeReplaySnapshots(@PathVariable String taskId,
+                                                                           HttpServletRequest httpServletRequest) {
+        ThrowUtils.throwIf(taskId == null || taskId.trim().isEmpty(),
+                ErrorCode.PARAMS_ERROR, "Task id cannot be empty");
+        User loginUser = userService.getLoginUser(httpServletRequest);
+        return ResultUtils.success(articleService.getNodeReplaySnapshots(taskId, loginUser));
     }
 
     @PostMapping("/list")
@@ -236,7 +247,7 @@ public class ArticleController {
 
         User loginUser = userService.getLoginUser(httpServletRequest);
         ArticleTaskSnapshotVO snapshot = articleService.retryNode(request.getTaskId(), request.getNode(), loginUser);
-        articleAsyncService.resumeTask(request.getTaskId());
+        articleAsyncService.resumeNodeReplay(request.getTaskId(), request.getNode());
         return ResultUtils.success(snapshot);
     }
 }

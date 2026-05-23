@@ -4,8 +4,10 @@ import com.yupi.template.annotation.AgentExecution;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.AgentLog;
 import com.yupi.template.model.enums.ArticlePhaseEnum;
+import com.yupi.template.model.vo.NodeExecutionMetadata;
 import com.yupi.template.service.AgentLogService;
 import com.yupi.template.service.ArticleNodeLogService;
+import com.yupi.template.service.ArticleNodeReplayService;
 import com.yupi.template.utils.GsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -21,9 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 智能体执行 AOP 切面。
- *
- * @author <a href="XXXX">呼哈设计</a>
+ * 智能体执行日志与节点观测切面。
  */
 @Aspect
 @Component
@@ -36,6 +36,9 @@ public class AgentExecutionAspect {
     @Resource
     private ArticleNodeLogService articleNodeLogService;
 
+    @Resource
+    private ArticleNodeReplayService articleNodeReplayService;
+
     @Around("@annotation(agentExecution)")
     public Object aroundAgentExecution(ProceedingJoinPoint pjp, AgentExecution agentExecution) throws Throwable {
         long startTime = System.currentTimeMillis();
@@ -46,6 +49,7 @@ public class AgentExecutionAspect {
         String prompt = extractPrompt(pjp);
         String phase = resolvePhase(pjp, agentExecution);
         String node = agentExecution.value();
+        NodeExecutionMetadata metadata = extractNodeExecutionMetadata(pjp);
 
         AgentLog agentLog = AgentLog.builder()
                 .taskId(taskId)
@@ -57,10 +61,12 @@ public class AgentExecutionAspect {
                 .build();
 
         if (shouldRecordNodeLog(taskId, phase)) {
-            articleNodeLogService.start(taskId, phase, node, buildNodeMessage(agentExecution, "started"));
+            articleNodeLogService.start(taskId, phase, node, buildNodeMessage(agentExecution, "started"), metadata);
+            articleNodeReplayService.start(taskId, phase, node,
+                    buildNodeMessage(agentExecution, "started"), inputData, metadata);
         }
 
-        Object result = null;
+        Object result;
         try {
             result = pjp.proceed();
 
@@ -69,30 +75,35 @@ public class AgentExecutionAspect {
             agentLog.setDurationMs((int) (System.currentTimeMillis() - startTime));
             agentLog.setOutputData(extractOutputData(result));
 
-            log.info("智能体执行成功 {}, taskId={}, 耗时={}ms",
+            log.info("智能体执行成功, agent={}, taskId={}, duration={}ms",
                     agentExecution.value(), taskId, agentLog.getDurationMs());
             if (shouldRecordNodeLog(taskId, phase)) {
                 articleNodeLogService.success(taskId, phase, node,
-                        buildNodeMessage(agentExecution, "finished"));
+                        buildNodeMessage(agentExecution, "finished"), metadata);
+                articleNodeReplayService.success(taskId, phase, node,
+                        buildNodeMessage(agentExecution, "finished"),
+                        agentLog.getOutputData(), agentLog.getDurationMs(), metadata);
             }
+            return result;
         } catch (Throwable e) {
             agentLog.setStatus("FAILED");
             agentLog.setEndTime(LocalDateTime.now());
             agentLog.setDurationMs((int) (System.currentTimeMillis() - startTime));
             agentLog.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getName());
 
-            log.error("智能体执行失败 {}, taskId={}, 错误={}",
+            log.error("智能体执行失败, agent={}, taskId={}, error={}",
                     agentExecution.value(), taskId, e.getMessage(), e);
             if (shouldRecordNodeLog(taskId, phase)) {
                 articleNodeLogService.fail(taskId, phase, node,
-                        buildNodeErrorMessage(agentExecution, e));
+                        buildNodeErrorMessage(agentExecution, e), metadata);
+                articleNodeReplayService.fail(taskId, phase, node,
+                        buildNodeErrorMessage(agentExecution, e),
+                        agentLog.getErrorMessage(), agentLog.getDurationMs(), metadata);
             }
             throw e;
         } finally {
             agentLogService.saveLogAsync(agentLog);
         }
-
-        return result;
     }
 
     private String extractTaskId(ProceedingJoinPoint pjp) {
@@ -102,14 +113,14 @@ public class AgentExecutionAspect {
         }
 
         for (Object arg : args) {
-            if (arg instanceof ArticleState) {
-                return ((ArticleState) arg).getTaskId();
+            if (arg instanceof ArticleState articleState) {
+                return articleState.getTaskId();
             }
         }
 
         for (Object arg : args) {
-            if (arg instanceof String) {
-                return (String) arg;
+            if (arg instanceof String str) {
+                return str;
             }
         }
 
@@ -131,8 +142,7 @@ public class AgentExecutionAspect {
                 Object arg = args[i];
                 if (arg instanceof String || arg instanceof Number || arg instanceof Boolean) {
                     inputMap.put(paramNames[i], arg);
-                } else if (arg instanceof ArticleState) {
-                    ArticleState state = (ArticleState) arg;
+                } else if (arg instanceof ArticleState state) {
                     inputMap.put("taskId", state.getTaskId());
                     if (state.getTitle() != null) {
                         inputMap.put("mainTitle", state.getTitle().getMainTitle());
@@ -152,15 +162,12 @@ public class AgentExecutionAspect {
             if (result == null) {
                 return null;
             }
-
             if (result instanceof String || result instanceof Number || result instanceof Boolean) {
                 return String.valueOf(result);
             }
-
-            if (result instanceof java.util.List) {
-                return "{\"listSize\": " + ((java.util.List<?>) result).size() + "}";
+            if (result instanceof java.util.List<?> list) {
+                return "{\"listSize\": " + list.size() + "}";
             }
-
             return "{\"type\": \"" + result.getClass().getSimpleName() + "\"}";
         } catch (Exception e) {
             log.warn("提取输出数据失败", e);
@@ -176,6 +183,19 @@ public class AgentExecutionAspect {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private NodeExecutionMetadata extractNodeExecutionMetadata(ProceedingJoinPoint pjp) {
+        Object[] args = pjp.getArgs();
+        if (args == null) {
+            return null;
+        }
+        for (Object arg : args) {
+            if (arg instanceof NodeExecutionMetadata metadata) {
+                return metadata;
+            }
+        }
+        return null;
     }
 
     private String resolvePhase(ProceedingJoinPoint pjp, AgentExecution agentExecution) {
