@@ -52,6 +52,8 @@ public class ArticleTaskSnapshotVO implements Serializable {
 
     private String fullContent;
 
+    private List<String> enabledImageMethods;
+
     private List<ArticleState.ImageRequirement> imageRequirements;
 
     private List<ArticleState.ImageResult> images;

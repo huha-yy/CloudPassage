@@ -165,6 +165,9 @@ public class ArticleTaskSnapshotServiceImpl implements ArticleTaskSnapshotServic
         if (state.getFullContent() != null) {
             snapshot.setFullContent(state.getFullContent());
         }
+        if (state.getEnabledImageMethods() != null) {
+            snapshot.setEnabledImageMethods(state.getEnabledImageMethods());
+        }
         if (state.getImageRequirements() != null) {
             snapshot.setImageRequirements(state.getImageRequirements());
         }
@@ -226,6 +229,8 @@ public class ArticleTaskSnapshotServiceImpl implements ArticleTaskSnapshotServic
                 }))
                 .content(article.getContent())
                 .fullContent(article.getFullContent())
+                .enabledImageMethods(parseJson(article.getEnabledImageMethods(), new TypeToken<List<String>>() {
+                }))
                 .images(parseJson(article.getImages(), new TypeToken<List<ArticleState.ImageResult>>() {
                 }))
                 .updatedAt(article.getUpdateTime() != null

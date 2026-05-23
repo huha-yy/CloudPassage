@@ -103,6 +103,9 @@ public class ArticleWorkflowStateFactoryImpl implements ArticleWorkflowStateFact
         if (snapshot.getFullContent() != null) {
             state.setFullContent(snapshot.getFullContent());
         }
+        if (snapshot.getEnabledImageMethods() != null) {
+            state.setEnabledImageMethods(snapshot.getEnabledImageMethods());
+        }
         if (snapshot.getImageRequirements() != null) {
             state.setImageRequirements(snapshot.getImageRequirements());
         }

@@ -89,6 +89,12 @@ public class ArticleTaskMemoryVO implements Serializable {
 
         private List<String> methods;
 
+        private Boolean needImages;
+
+        private String decisionReason;
+
+        private String decisionSource;
+
         private Integer requirementCount;
 
         private Integer generatedCount;

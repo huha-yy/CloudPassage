@@ -10,6 +10,7 @@ import com.yupi.template.mapper.ArticleMapper;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.Article;
 import com.yupi.template.model.vo.ArticleTaskMemoryVO;
+import com.yupi.template.model.vo.ImageStrategyDecisionVO;
 import com.yupi.template.model.vo.NodeExecutionLogVO;
 import com.yupi.template.model.vo.UserCreationPreferenceVO;
 import com.yupi.template.service.ArticleMemoryService;
@@ -232,6 +233,39 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
     }
 
     @Override
+    public void recordImageStrategyDecision(String taskId, ArticleState state, ImageStrategyDecisionVO decision) {
+        if (isBlank(taskId) || decision == null) {
+            return;
+        }
+        ArticleTaskMemoryVO memory = getOrCreate(taskId);
+        mergeArticle(memory, findArticle(taskId));
+        mergeState(memory, state);
+        ArticleTaskMemoryVO.MemoryImageStrategyVO current = memory.getImageStrategy();
+        List<String> methods = decision.getPreferredMethods() == null || decision.getPreferredMethods().isEmpty()
+                ? (current == null ? null : current.getMethods())
+                : decision.getPreferredMethods();
+        memory.setImageStrategy(ArticleTaskMemoryVO.MemoryImageStrategyVO.builder()
+                .methods(methods)
+                .needImages(decision.getNeedImages())
+                .decisionReason(decision.getReason())
+                .decisionSource(decision.getSource())
+                .sources(current == null ? null : current.getSources())
+                .requirementCount(current == null ? null : current.getRequirementCount())
+                .generatedCount(current == null ? null : current.getGeneratedCount())
+                .build());
+        addSignal(memory, buildSignal(
+                "image_strategy_routed",
+                "图片策略已路由",
+                "来源=" + firstNonBlank(decision.getSource(), "--")
+                        + "，方法=" + firstNonBlank(joinValues(methods), "--"),
+                state != null ? state.getPhase() : memory.getCurrentPhase(),
+                "image_strategy_router"
+        ));
+        touch(memory);
+        persist(memory);
+    }
+
+    @Override
     public ArticleTaskMemoryVO getTaskMemory(String taskId) {
         return readMemory(taskId);
     }
@@ -358,6 +392,9 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         }
         memory.setImageStrategy(ArticleTaskMemoryVO.MemoryImageStrategyVO.builder()
                 .methods(methods.isEmpty() ? null : methods)
+                .needImages(current == null ? null : current.getNeedImages())
+                .decisionReason(current == null ? null : current.getDecisionReason())
+                .decisionSource(current == null ? null : current.getDecisionSource())
                 .sources(sources.isEmpty() ? null : sources)
                 .requirementCount(requirementCount > 0 ? requirementCount : currentValue(current != null ? current.getRequirementCount() : null))
                 .generatedCount(generatedCount > 0 ? generatedCount : currentValue(current != null ? current.getGeneratedCount() : null))
@@ -728,6 +765,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             case "workflow_phase_2", "agent2_generate_outline", "ai_modify_outline" ->
                     buildOutlineNodeSnapshot(node, phase, status, state);
             case "workflow_phase_3", "agent3_generate_content" -> buildContentNodeSnapshot(node, phase, status, state);
+            case "image_strategy_router" -> buildImageStrategySnapshot(node, phase, status, state);
             case "agent4_analyze_image_requirements" -> buildImageRequirementSnapshot(node, phase, status, state);
             case "agent5_generate_images" -> buildImageGenerationSnapshot(node, phase, status, state);
             case "agent6_merge_content" -> buildMergeSnapshot(node, phase, status, state);
@@ -832,6 +870,25 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                 .summary(requirements.isEmpty() ? "未识别到图片需求" : "已识别 " + requirements.size() + " 条图片需求")
                 .detail(requirements.isEmpty() ? null : "首个来源=" + firstNonBlank(requirements.get(0).getImageSource(), "--"))
                 .highlights(highlights.isEmpty() ? null : highlights)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    private ArticleTaskMemoryVO.NodeSnapshotVO buildImageStrategySnapshot(String node,
+                                                                          String phase,
+                                                                          String status,
+                                                                          ArticleState state) {
+        List<String> methods = state == null || state.getEnabledImageMethods() == null
+                ? Collections.emptyList()
+                : state.getEnabledImageMethods();
+        return ArticleTaskMemoryVO.NodeSnapshotVO.builder()
+                .node(node)
+                .phase(phase)
+                .label("图片策略路由")
+                .status(status)
+                .summary(methods.isEmpty() ? "未命中图片策略方法" : "已路由 " + methods.size() + " 个候选图片方法")
+                .detail(methods.isEmpty() ? null : "方法=" + joinValues(methods))
+                .highlights(methods.isEmpty() ? null : methods.stream().limit(MAX_HIGHLIGHTS).collect(Collectors.toList()))
                 .timestamp(System.currentTimeMillis())
                 .build();
     }
@@ -980,6 +1037,16 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
 
     private String firstNonBlank(String candidate, String fallback) {
         return !isBlank(candidate) ? candidate : fallback;
+    }
+
+    private String joinValues(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        return values.stream()
+                .filter(Objects::nonNull)
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.joining(", "));
     }
 
     private boolean isBlank(String value) {

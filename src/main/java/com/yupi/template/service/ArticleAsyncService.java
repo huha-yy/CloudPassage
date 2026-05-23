@@ -7,6 +7,7 @@ import com.yupi.template.model.entity.Article;
 import com.yupi.template.model.enums.ArticlePhaseEnum;
 import com.yupi.template.model.enums.ArticleStatusEnum;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
+import com.yupi.template.model.vo.ImageStrategyDecisionVO;
 import com.yupi.template.model.vo.NodeExecutionMetadata;
 import com.yupi.template.utils.GsonUtils;
 import jakarta.annotation.Resource;
@@ -48,6 +49,9 @@ public class ArticleAsyncService {
 
     @Resource
     private AgentPromptSupport agentPromptSupport;
+
+    @Resource
+    private ImageStrategyRouterService imageStrategyRouterService;
 
     @Async("articleExecutor")
     public void executePhase1(String taskId, String topic, String style) {
@@ -258,6 +262,7 @@ public class ArticleAsyncService {
                 articleAgentService.agent3GenerateContent(state, streamHandler, buildReplayMetadata(node));
                 handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT3_COMPLETE));
 
+                applyImageStrategyRouter(state);
                 articleAgentService.agent4AnalyzeImageRequirements(state, buildReplayMetadata("agent4_analyze_image_requirements"));
                 handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT4_COMPLETE));
 
@@ -269,6 +274,7 @@ public class ArticleAsyncService {
             }
             case "agent4_analyze_image_requirements" -> {
                 resetStateForReplay(state, node);
+                applyImageStrategyRouter(state);
                 articleAgentService.agent4AnalyzeImageRequirements(state, buildReplayMetadata(node));
                 handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT4_COMPLETE));
 
@@ -383,11 +389,13 @@ public class ArticleAsyncService {
         switch (node) {
             case "agent3_generate_content" -> {
                 state.setContent(null);
+                state.setEnabledImageMethods(null);
                 state.setImageRequirements(null);
                 state.setImages(new ArrayList<>());
                 state.setFullContent(null);
             }
             case "agent4_analyze_image_requirements" -> {
+                state.setEnabledImageMethods(null);
                 state.setImageRequirements(null);
                 state.setImages(new ArrayList<>());
                 state.setFullContent(null);
@@ -416,5 +424,35 @@ public class ArticleAsyncService {
             case "agent6_merge_content" -> 6;
             default -> 3;
         };
+    }
+
+    private void applyImageStrategyRouter(ArticleState state) {
+        if (state == null) {
+            return;
+        }
+        NodeExecutionMetadata metadata = buildImageRouterMetadata();
+        ImageStrategyDecisionVO decision = imageStrategyRouterService.route(state, metadata);
+        if (decision == null || decision.getPreferredMethods() == null || decision.getPreferredMethods().isEmpty()) {
+            return;
+        }
+        state.setEnabledImageMethods(decision.getPreferredMethods());
+        articleMemoryService.recordImageStrategyDecision(state.getTaskId(), state, decision);
+        articleMemoryService.recordNodeSnapshot(state.getTaskId(),
+                ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "image_strategy_router", "SUCCESS", state);
+        articleWorkflowEventService.publishNodeInfo(state.getTaskId(),
+                ArticlePhaseEnum.CONTENT_GENERATING.getValue(),
+                "image_strategy_router",
+                "图片策略已路由：source=" + decision.getSource() + ", methods=" + decision.getPreferredMethods());
+    }
+
+    private NodeExecutionMetadata buildImageRouterMetadata() {
+        return NodeExecutionMetadata.builder()
+                .promptKey("image_strategy_router")
+                .promptVersion("rule-v1")
+                .model("rule-engine")
+                .temperature(0D)
+                .maxTokens(0)
+                .topP(0D)
+                .build();
     }
 }

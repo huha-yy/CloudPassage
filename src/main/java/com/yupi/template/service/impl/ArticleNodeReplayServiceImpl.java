@@ -228,6 +228,9 @@ public class ArticleNodeReplayServiceImpl implements ArticleNodeReplayService {
         snapshot.setTemperature(metadata.getTemperature());
         snapshot.setMaxTokens(metadata.getMaxTokens());
         snapshot.setTopP(metadata.getTopP());
+        snapshot.setDecisionSource(metadata.getDecisionSource());
+        snapshot.setDecisionReason(metadata.getDecisionReason());
+        snapshot.setDecisionSummary(metadata.getDecisionSummary());
     }
 
     private void expireKeys(String taskId) {

@@ -43,4 +43,10 @@ public class NodeExecutionLogVO implements Serializable {
     private Integer maxTokens;
 
     private Double topP;
+
+    private String decisionSource;
+
+    private String decisionReason;
+
+    private String decisionSummary;
 }

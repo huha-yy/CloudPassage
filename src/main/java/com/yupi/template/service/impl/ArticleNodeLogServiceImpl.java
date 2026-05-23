@@ -98,6 +98,9 @@ public class ArticleNodeLogServiceImpl implements ArticleNodeLogService {
                 .temperature(metadata == null ? null : metadata.getTemperature())
                 .maxTokens(metadata == null ? null : metadata.getMaxTokens())
                 .topP(metadata == null ? null : metadata.getTopP())
+                .decisionSource(metadata == null ? null : metadata.getDecisionSource())
+                .decisionReason(metadata == null ? null : metadata.getDecisionReason())
+                .decisionSummary(metadata == null ? null : metadata.getDecisionSummary())
                 .build();
         redisTemplate.opsForList().rightPush(buildLogKey(taskId), GsonUtils.toJson(logVO));
         redisTemplate.expire(buildLogKey(taskId), LOG_TTL_HOURS, TimeUnit.HOURS);

@@ -389,6 +389,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         resumeState.setOutlineRaw(snapshot.getOutlineRaw());
         resumeState.setContent(snapshot.getContent());
         resumeState.setFullContent(snapshot.getFullContent());
+        resumeState.setEnabledImageMethods(snapshot.getEnabledImageMethods());
         if (snapshot.getImageRequirements() != null) {
             resumeState.setImageRequirements(snapshot.getImageRequirements());
         }

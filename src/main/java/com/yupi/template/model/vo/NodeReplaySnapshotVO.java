@@ -52,6 +52,12 @@ public class NodeReplaySnapshotVO implements Serializable {
 
     private Double topP;
 
+    private String decisionSource;
+
+    private String decisionReason;
+
+    private String decisionSummary;
+
     private String inputSummary;
 
     private String outputSummary;

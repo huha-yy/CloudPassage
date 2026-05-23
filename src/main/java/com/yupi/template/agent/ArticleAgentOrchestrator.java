@@ -15,7 +15,10 @@ import com.yupi.template.agent.agents.TitleGeneratorAgent;
 import com.yupi.template.agent.parallel.ParallelImageGenerator;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
+import com.yupi.template.model.vo.ImageStrategyDecisionVO;
 import com.yupi.template.service.ArticleNodeLogService;
+import com.yupi.template.service.ArticleMemoryService;
+import com.yupi.template.service.ImageStrategyRouterService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -57,6 +60,12 @@ public class ArticleAgentOrchestrator {
 
     @Resource
     private ArticleNodeLogService articleNodeLogService;
+
+    @Resource
+    private ImageStrategyRouterService imageStrategyRouterService;
+
+    @Resource
+    private ArticleMemoryService articleMemoryService;
 
     private static final String KEY_TASK_ID = "taskId";
     private static final String KEY_TOPIC = "topic";
@@ -142,6 +151,7 @@ public class ArticleAgentOrchestrator {
     public void executePhase3_GenerateContent(ArticleState state, Consumer<String> streamHandler) {
         log.info("Phase3 orchestrator started, taskId={}", state.getTaskId());
         try {
+            applyImageStrategyRouter(state);
             Map<String, Object> inputs = new HashMap<>();
             inputs.put(KEY_TASK_ID, state.getTaskId());
             inputs.put(KEY_MAIN_TITLE, state.getTitle().getMainTitle());
@@ -205,6 +215,19 @@ public class ArticleAgentOrchestrator {
         }
     }
 
+    private void applyImageStrategyRouter(ArticleState state) {
+        ImageStrategyDecisionVO decision = imageStrategyRouterService.route(state, buildImageRouterMetadata());
+        if (decision == null || decision.getPreferredMethods() == null || decision.getPreferredMethods().isEmpty()) {
+            return;
+        }
+        state.setEnabledImageMethods(decision.getPreferredMethods());
+        articleMemoryService.recordImageStrategyDecision(state.getTaskId(), state, decision);
+        articleMemoryService.recordNodeSnapshot(state.getTaskId(), "CONTENT_GENERATING", "image_strategy_router", "SUCCESS", state);
+        articleNodeLogService.info(state.getTaskId(), "CONTENT_GENERATING", "image_strategy_router",
+                "图片策略已路由：source=" + decision.getSource() + ", methods=" + decision.getPreferredMethods(),
+                buildImageRouterMetadata());
+    }
+
     private StateGraph buildPhase1Graph() throws GraphStateException {
         KeyStrategyFactory keyStrategyFactory = createKeyStrategyFactory();
         return new StateGraph(keyStrategyFactory)
@@ -254,5 +277,16 @@ public class ArticleAgentOrchestrator {
             strategies.put(KEY_ENABLED_IMAGE_METHODS, new ReplaceStrategy());
             return strategies;
         };
+    }
+
+    private com.yupi.template.model.vo.NodeExecutionMetadata buildImageRouterMetadata() {
+        return com.yupi.template.model.vo.NodeExecutionMetadata.builder()
+                .promptKey("image_strategy_router")
+                .promptVersion("rule-v1")
+                .model("rule-engine")
+                .temperature(0D)
+                .maxTokens(0)
+                .topP(0D)
+                .build();
     }
 }

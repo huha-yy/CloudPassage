@@ -9,6 +9,7 @@ import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.dto.image.ImageRequest;
 import com.yupi.template.model.enums.ImageMethodEnum;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
+import com.yupi.template.model.vo.ImageStrategyDecisionVO;
 import com.yupi.template.model.vo.NodeExecutionMetadata;
 import com.yupi.template.utils.GsonUtils;
 import jakarta.annotation.Resource;
@@ -48,6 +49,12 @@ public class ArticleAgentService {
     @Resource
     private AgentPromptSupport agentPromptSupport;
 
+    @Resource
+    private ImageStrategyRouterService imageStrategyRouterService;
+
+    @Resource
+    private ArticleMemoryService articleMemoryService;
+
     public void executePhase1_GenerateTitles(ArticleState state, Consumer<String> streamHandler) {
         try {
             log.info("Phase 1 generate titles started, taskId={}", state.getTaskId());
@@ -82,6 +89,7 @@ public class ArticleAgentService {
                     buildMetadataForProfile(CONTENT_PROFILE, "agent3_content", true, false));
             streamHandler.accept(SseMessageTypeEnum.AGENT3_COMPLETE.getValue());
 
+            proxy.imageStrategyRouter(state, buildImageRouterMetadata());
             log.info("Phase 3 analyze image requirements started, taskId={}", state.getTaskId());
             proxy.agent4AnalyzeImageRequirements(state,
                     buildMetadataForProfile(IMAGE_PROFILE, "agent4_image", false, true));
@@ -164,6 +172,18 @@ public class ArticleAgentService {
         state.setContent(content);
         log.info("Content generated, length={}, model={}, promptKey={}, promptVersion={}",
                 content.length(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
+    }
+
+    public void imageStrategyRouter(ArticleState state, NodeExecutionMetadata metadata) {
+        ImageStrategyDecisionVO decision = imageStrategyRouterService.route(state, metadata);
+        if (decision == null || decision.getPreferredMethods() == null || decision.getPreferredMethods().isEmpty()) {
+            return;
+        }
+        state.setEnabledImageMethods(decision.getPreferredMethods());
+        articleMemoryService.recordImageStrategyDecision(state.getTaskId(), state, decision);
+        articleMemoryService.recordNodeSnapshot(state.getTaskId(), "CONTENT_GENERATING", "image_strategy_router", "SUCCESS", state);
+        log.info("Image strategy routed, taskId={}, source={}, methods={}",
+                state.getTaskId(), decision.getSource(), decision.getPreferredMethods());
     }
 
     @AgentExecution(value = "agent4_analyze_image_requirements", description = "分析配图需求")
@@ -422,6 +442,17 @@ public class ArticleAgentService {
                                                           boolean defaultStreaming,
                                                           boolean defaultStructuredOutput) {
         return agentPromptSupport.toMetadata(resolveProfile(profileName, defaultPromptKey, defaultStreaming, defaultStructuredOutput));
+    }
+
+    private NodeExecutionMetadata buildImageRouterMetadata() {
+        return NodeExecutionMetadata.builder()
+                .promptKey("image_strategy_router")
+                .promptVersion("rule-v1")
+                .model("rule-engine")
+                .temperature(0D)
+                .maxTokens(0)
+                .topP(0D)
+                .build();
     }
 
     private boolean isValidTitleOptions(List<ArticleState.TitleOption> titleOptions) {
