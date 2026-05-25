@@ -1,4 +1,4 @@
-# Maven
+﻿# Maven
 target/
 !.mvn/wrapper/maven-wrapper.jar
 *.jar
@@ -77,3 +77,6 @@ python-backend/
 
 简历项目描述
 面试时怎么讲这个项目的回答模板
+
+简历项目描述.md
+面试时怎么讲这个项目的回答模板.md
