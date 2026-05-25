@@ -88,6 +88,9 @@ public class ArticleTaskSnapshotServiceImpl implements ArticleTaskSnapshotServic
             if (chunk != null) {
                 snapshot.setContent(defaultString(snapshot.getContent()) + chunk);
             }
+        } else if (SseMessageTypeEnum.AGENT3_REVIEW_COMPLETE.getValue().equals(type)) {
+            snapshot.setContent(readPayloadString(event, "content"));
+            snapshot.setContentReview(readPayloadField(event, "contentReview", ArticleState.ContentReviewResult.class));
         } else if (SseMessageTypeEnum.AGENT4_COMPLETE.getValue().equals(type)) {
             snapshot.setImageRequirements(readPayloadField(event, "imageRequirements", new TypeToken<List<ArticleState.ImageRequirement>>() {
             }));
@@ -104,6 +107,9 @@ public class ArticleTaskSnapshotServiceImpl implements ArticleTaskSnapshotServic
         } else if (SseMessageTypeEnum.AGENT5_COMPLETE.getValue().equals(type)) {
             snapshot.setImages(readPayloadField(event, "images", new TypeToken<List<ArticleState.ImageResult>>() {
             }));
+            snapshot.setImageFallbackRecords(readPayloadField(event, "imageFallbackRecords",
+                    new TypeToken<List<ArticleState.ImageFallbackRecord>>() {
+                    }));
         } else if (SseMessageTypeEnum.MERGE_COMPLETE.getValue().equals(type)) {
             snapshot.setFullContent(readPayloadString(event, "fullContent"));
         } else if (SseMessageTypeEnum.ERROR.getValue().equals(type)) {
@@ -174,6 +180,12 @@ public class ArticleTaskSnapshotServiceImpl implements ArticleTaskSnapshotServic
         if (state.getImages() != null) {
             snapshot.setImages(state.getImages());
         }
+        if (state.getImageFallbackRecords() != null) {
+            snapshot.setImageFallbackRecords(state.getImageFallbackRecords());
+        }
+        if (state.getContentReview() != null) {
+            snapshot.setContentReview(state.getContentReview());
+        }
     }
 
     private ArticleTaskSnapshotVO readSnapshot(String taskId) {
@@ -233,6 +245,8 @@ public class ArticleTaskSnapshotServiceImpl implements ArticleTaskSnapshotServic
                 }))
                 .images(parseJson(article.getImages(), new TypeToken<List<ArticleState.ImageResult>>() {
                 }))
+                .imageFallbackRecords(null)
+                .contentReview(null)
                 .updatedAt(article.getUpdateTime() != null
                         ? article.getUpdateTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                         : System.currentTimeMillis())

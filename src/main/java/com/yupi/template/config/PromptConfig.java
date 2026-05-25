@@ -40,6 +40,7 @@ public class PromptConfig {
         mergeTemplate("agent2_description_section", PromptConstant.AGENT2_DESCRIPTION_SECTION,
                 "outline description section prompt");
         mergeTemplate("agent3_content", PromptConstant.AGENT3_CONTENT_PROMPT, "content generator prompt");
+        mergeTemplate("agent3_content_review", PromptConstant.AGENT3_CONTENT_REVIEW_PROMPT, "content reviewer prompt");
         mergeTemplate("agent4_image", PromptConstant.AGENT4_IMAGE_REQUIREMENTS_PROMPT, "image analyzer prompt");
         mergeTemplate("ai_modify_outline", PromptConstant.AI_MODIFY_OUTLINE_PROMPT, "outline modify prompt");
         mergeTemplate("style_tech", PromptConstant.STYLE_TECH_PROMPT, "tech style prompt");

@@ -37,4 +37,14 @@ public class NodeExecutionMetadata implements Serializable {
     private String decisionReason;
 
     private String decisionSummary;
+
+    private String fallbackSource;
+
+    private String fallbackReason;
+
+    private String fallbackSummary;
+
+    private String memoryContextSummary;
+
+    private String memoryContextSnapshot;
 }

@@ -17,6 +17,7 @@ import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
 import com.yupi.template.model.vo.ImageStrategyDecisionVO;
 import com.yupi.template.service.ArticleNodeLogService;
+import com.yupi.template.service.ArticleAgentService;
 import com.yupi.template.service.ArticleMemoryService;
 import com.yupi.template.service.ImageStrategyRouterService;
 import lombok.extern.slf4j.Slf4j;
@@ -66,6 +67,9 @@ public class ArticleAgentOrchestrator {
 
     @Resource
     private ArticleMemoryService articleMemoryService;
+
+    @Resource
+    private ArticleAgentService articleAgentService;
 
     private static final String KEY_TASK_ID = "taskId";
     private static final String KEY_TOPIC = "topic";
@@ -182,6 +186,10 @@ public class ArticleAgentOrchestrator {
             List<ArticleState.ImageResult> images = finalState.value(KEY_IMAGES)
                     .map(v -> (List<ArticleState.ImageResult>) v)
                     .orElse(null);
+            @SuppressWarnings("unchecked")
+            List<ArticleState.ImageFallbackRecord> imageFallbackRecords = finalState.value("imageFallbackRecords")
+                    .map(v -> (List<ArticleState.ImageFallbackRecord>) v)
+                    .orElse(null);
             String fullContent = finalState.value(KEY_FULL_CONTENT)
                     .map(Object::toString)
                     .orElse(null);
@@ -192,6 +200,8 @@ public class ArticleAgentOrchestrator {
                 state.setContent(content);
             }
             streamHandler.accept(SseMessageTypeEnum.AGENT3_COMPLETE.getValue());
+            articleAgentService.agent3ReviewContent(state, buildContentReviewMetadata());
+            streamHandler.accept(SseMessageTypeEnum.AGENT3_REVIEW_COMPLETE.getValue());
 
             if (imageRequirements != null) {
                 state.setImageRequirements(imageRequirements);
@@ -199,6 +209,7 @@ public class ArticleAgentOrchestrator {
             }
             if (images != null) {
                 state.setImages(images);
+                state.setImageFallbackRecords(imageFallbackRecords);
                 streamHandler.accept(SseMessageTypeEnum.AGENT5_COMPLETE.getValue());
             }
             if (fullContent != null) {
@@ -287,6 +298,14 @@ public class ArticleAgentOrchestrator {
                 .temperature(0D)
                 .maxTokens(0)
                 .topP(0D)
+                .build();
+    }
+
+    private com.yupi.template.model.vo.NodeExecutionMetadata buildContentReviewMetadata() {
+        return com.yupi.template.model.vo.NodeExecutionMetadata.builder()
+                .promptKey("agent3_content_review")
+                .promptVersion("v1")
+                .model("qwen-plus")
                 .build();
     }
 }

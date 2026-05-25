@@ -49,4 +49,10 @@ public class NodeExecutionLogVO implements Serializable {
     private String decisionReason;
 
     private String decisionSummary;
+
+    private String fallbackSource;
+
+    private String fallbackReason;
+
+    private String fallbackSummary;
 }

@@ -58,5 +58,9 @@ public class ArticleTaskSnapshotVO implements Serializable {
 
     private List<ArticleState.ImageResult> images;
 
+    private List<ArticleState.ImageFallbackRecord> imageFallbackRecords;
+
+    private ArticleState.ContentReviewResult contentReview;
+
     private Long updatedAt;
 }

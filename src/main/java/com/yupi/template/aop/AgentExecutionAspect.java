@@ -211,6 +211,7 @@ public class AgentExecutionAspect {
             case "agent1_generate_titles" -> ArticlePhaseEnum.TITLE_GENERATING.getValue();
             case "agent2_generate_outline" -> ArticlePhaseEnum.OUTLINE_GENERATING.getValue();
             case "agent3_generate_content",
+                 "agent3_review_content",
                  "agent4_analyze_image_requirements",
                  "agent5_generate_images",
                  "agent6_merge_content" -> ArticlePhaseEnum.CONTENT_GENERATING.getValue();

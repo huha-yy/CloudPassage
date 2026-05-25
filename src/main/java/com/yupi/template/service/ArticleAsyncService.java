@@ -261,12 +261,29 @@ public class ArticleAsyncService {
                 resetStateForReplay(state, node);
                 articleAgentService.agent3GenerateContent(state, streamHandler, buildReplayMetadata(node));
                 handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT3_COMPLETE));
+                articleAgentService.agent3ReviewContent(state, buildReplayMetadata("agent3_review_content"));
+                handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT3_REVIEW_COMPLETE));
 
                 applyImageStrategyRouter(state);
                 articleAgentService.agent4AnalyzeImageRequirements(state, buildReplayMetadata("agent4_analyze_image_requirements"));
                 handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT4_COMPLETE));
 
-                articleAgentService.agent5GenerateImages(state, streamHandler);
+                articleAgentService.agent5GenerateImages(state, streamHandler, buildImageGenerationMetadata());
+                handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT5_COMPLETE));
+
+                articleAgentService.mergeImagesIntoContent(state);
+                handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.MERGE_COMPLETE));
+            }
+            case "agent3_review_content" -> {
+                resetStateForReplay(state, node);
+                articleAgentService.agent3ReviewContent(state, buildReplayMetadata(node));
+                handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT3_REVIEW_COMPLETE));
+
+                applyImageStrategyRouter(state);
+                articleAgentService.agent4AnalyzeImageRequirements(state, buildReplayMetadata("agent4_analyze_image_requirements"));
+                handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT4_COMPLETE));
+
+                articleAgentService.agent5GenerateImages(state, streamHandler, buildImageGenerationMetadata());
                 handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT5_COMPLETE));
 
                 articleAgentService.mergeImagesIntoContent(state);
@@ -278,7 +295,7 @@ public class ArticleAsyncService {
                 articleAgentService.agent4AnalyzeImageRequirements(state, buildReplayMetadata(node));
                 handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT4_COMPLETE));
 
-                articleAgentService.agent5GenerateImages(state, streamHandler);
+                articleAgentService.agent5GenerateImages(state, streamHandler, buildImageGenerationMetadata());
                 handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT5_COMPLETE));
 
                 articleAgentService.mergeImagesIntoContent(state);
@@ -286,7 +303,7 @@ public class ArticleAsyncService {
             }
             case "agent5_generate_images" -> {
                 resetStateForReplay(state, node);
-                articleAgentService.agent5GenerateImages(state, streamHandler);
+                articleAgentService.agent5GenerateImages(state, streamHandler, buildImageGenerationMetadata());
                 handleWorkflowEvent(taskId, state, ArticleWorkflowEvent.simple(SseMessageTypeEnum.AGENT5_COMPLETE));
 
                 articleAgentService.mergeImagesIntoContent(state);
@@ -329,6 +346,8 @@ public class ArticleAsyncService {
                     taskId, ArticlePhaseEnum.OUTLINE_GENERATING.getValue(), "agent2_generate_outline", "SUCCESS", state);
             case AGENT3_COMPLETE -> articleMemoryService.recordNodeSnapshot(
                     taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "agent3_generate_content", "SUCCESS", state);
+            case AGENT3_REVIEW_COMPLETE -> articleMemoryService.recordNodeSnapshot(
+                    taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "agent3_review_content", "SUCCESS", state);
             case AGENT4_COMPLETE -> articleMemoryService.recordNodeSnapshot(
                     taskId, ArticlePhaseEnum.CONTENT_GENERATING.getValue(), "agent4_analyze_image_requirements", "SUCCESS", state);
             case AGENT5_COMPLETE -> articleMemoryService.recordNodeSnapshot(
@@ -378,6 +397,9 @@ public class ArticleAsyncService {
             case "agent3_generate_content" -> agentPromptSupport.toMetadata(
                     agentPromptSupport.resolveProfile("content-generator", "agent3_content", true, false)
             );
+            case "agent3_review_content" -> agentPromptSupport.toMetadata(
+                    agentPromptSupport.resolveProfile("content-reviewer", "agent3_content_review", false, true)
+            );
             case "agent4_analyze_image_requirements" -> agentPromptSupport.toMetadata(
                     agentPromptSupport.resolveProfile("image-analyzer", "agent4_image", false, true)
             );
@@ -389,19 +411,31 @@ public class ArticleAsyncService {
         switch (node) {
             case "agent3_generate_content" -> {
                 state.setContent(null);
+                state.setContentReview(null);
                 state.setEnabledImageMethods(null);
                 state.setImageRequirements(null);
                 state.setImages(new ArrayList<>());
+                state.setImageFallbackRecords(new ArrayList<>());
+                state.setFullContent(null);
+            }
+            case "agent3_review_content" -> {
+                state.setContentReview(null);
+                state.setEnabledImageMethods(null);
+                state.setImageRequirements(null);
+                state.setImages(new ArrayList<>());
+                state.setImageFallbackRecords(new ArrayList<>());
                 state.setFullContent(null);
             }
             case "agent4_analyze_image_requirements" -> {
                 state.setEnabledImageMethods(null);
                 state.setImageRequirements(null);
                 state.setImages(new ArrayList<>());
+                state.setImageFallbackRecords(new ArrayList<>());
                 state.setFullContent(null);
             }
             case "agent5_generate_images" -> {
                 state.setImages(new ArrayList<>());
+                state.setImageFallbackRecords(new ArrayList<>());
                 state.setFullContent(null);
             }
             case "agent6_merge_content" -> state.setFullContent(null);
@@ -412,6 +446,7 @@ public class ArticleAsyncService {
 
     private boolean isContentReplayNode(String node) {
         return "agent3_generate_content".equals(node)
+                || "agent3_review_content".equals(node)
                 || "agent4_analyze_image_requirements".equals(node)
                 || "agent5_generate_images".equals(node)
                 || "agent6_merge_content".equals(node);
@@ -419,6 +454,7 @@ public class ArticleAsyncService {
 
     private int resolveReplayProgress(String node) {
         return switch (node) {
+            case "agent3_review_content" -> 3;
             case "agent4_analyze_image_requirements" -> 4;
             case "agent5_generate_images" -> 5;
             case "agent6_merge_content" -> 6;
@@ -450,6 +486,17 @@ public class ArticleAsyncService {
                 .promptKey("image_strategy_router")
                 .promptVersion("rule-v1")
                 .model("rule-engine")
+                .temperature(0D)
+                .maxTokens(0)
+                .topP(0D)
+                .build();
+    }
+
+    private NodeExecutionMetadata buildImageGenerationMetadata() {
+        return NodeExecutionMetadata.builder()
+                .promptKey("image_fallback_router")
+                .promptVersion("rule-v1")
+                .model("tool-router")
                 .temperature(0D)
                 .maxTokens(0)
                 .topP(0D)

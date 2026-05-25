@@ -63,8 +63,14 @@ public class ArticleState implements Serializable {
     /** Enabled image methods, null means unrestricted. */
     private List<String> enabledImageMethods;
 
+    /** Image fallback records collected during generation. */
+    private List<ImageFallbackRecord> imageFallbackRecords;
+
     /** Final merged markdown content. */
     private String fullContent;
+
+    /** Reviewer summary for the latest content review pass. */
+    private ContentReviewResult contentReview;
 
     @Data
     public static class TitleOption implements Serializable {
@@ -110,11 +116,36 @@ public class ArticleState implements Serializable {
         private String sectionTitle;
         private String description;
         private String placeholderId;
+        private String requestedMethod;
+        private Boolean fallbackApplied;
+        private String fallbackReason;
+        private List<String> attemptedMethods;
+    }
+
+    @Data
+    public static class ImageFallbackRecord implements Serializable {
+        private Integer position;
+        private String requestedMethod;
+        private String finalMethod;
+        private Boolean fallbackApplied;
+        private String fallbackReason;
+        private List<String> attemptedMethods;
+        private String sectionTitle;
+        private String placeholderId;
     }
 
     @Data
     public static class Agent4Result implements Serializable {
         private String contentWithPlaceholders;
         private List<ImageRequirement> imageRequirements;
+    }
+
+    @Data
+    public static class ContentReviewResult implements Serializable {
+        private Boolean needsRevision;
+        private String summary;
+        private List<String> issues;
+        private List<String> qualitySignals;
+        private String revisedContent;
     }
 }

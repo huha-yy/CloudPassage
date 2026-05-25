@@ -45,6 +45,11 @@
     decisionSource?: string
     decisionReason?: string
     decisionSummary?: string
+    memoryContextSummary?: string
+    memoryContextSnapshot?: string
+    fallbackSource?: string
+    fallbackReason?: string
+    fallbackSummary?: string
   }
 
   type NodeReplaySnapshotVO = {
@@ -67,6 +72,11 @@
     decisionSource?: string
     decisionReason?: string
     decisionSummary?: string
+    memoryContextSummary?: string
+    memoryContextSnapshot?: string
+    fallbackSource?: string
+    fallbackReason?: string
+    fallbackSummary?: string
     inputSummary?: string
     outputSummary?: string
     errorMessage?: string
@@ -150,6 +160,7 @@
     selectedTitle?: TitleOption
     outlineSummary?: MemorySummaryVO
     contentSummary?: MemorySummaryVO
+    contentReview?: MemoryContentReviewVO
     imageStrategy?: MemoryImageStrategyVO
     qualitySignals?: MemorySignalVO[]
     manualActions?: MemoryActionVO[]
@@ -183,6 +194,17 @@
     requirementCount?: number
     generatedCount?: number
     sources?: string[]
+    fallbackCount?: number
+    fallbackSummary?: string
+  }
+
+  type MemoryContentReviewVO = {
+    needsRevision?: boolean
+    revised?: boolean
+    issueCount?: number
+    summary?: string
+    issues?: string[]
+    qualitySignals?: string[]
   }
 
   type MemorySignalVO = {
@@ -388,6 +410,10 @@
     sectionTitle?: string
     description?: string
     placeholderId?: string
+    requestedMethod?: string
+    fallbackApplied?: boolean
+    fallbackReason?: string
+    attemptedMethods?: string[]
   }
 
   type ImageRequirement = {

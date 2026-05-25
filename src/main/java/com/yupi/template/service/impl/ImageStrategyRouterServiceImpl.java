@@ -6,6 +6,7 @@ import com.yupi.template.mapper.ArticleMapper;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.Article;
 import com.yupi.template.model.enums.ImageMethodEnum;
+import com.yupi.template.model.vo.ArticleMemoryContextVO;
 import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ImageStrategyDecisionVO;
 import com.yupi.template.model.vo.NodeExecutionMetadata;
@@ -62,6 +63,9 @@ public class ImageStrategyRouterServiceImpl implements ImageStrategyRouterServic
         UserCreationPreferenceVO preference = article != null && article.getUserId() != null
                 ? articleMemoryService.getUserPreference(article.getUserId())
                 : null;
+        ArticleMemoryContextVO memoryContext = articleMemoryService.buildCreationMemoryContext(
+                state.getTaskId(), article == null ? null : article.getUserId()
+        );
 
         List<String> availableMethods = sanitizeMethods(state.getEnabledImageMethods());
         String textSignal = buildSignalText(state);
@@ -92,6 +96,14 @@ public class ImageStrategyRouterServiceImpl implements ImageStrategyRouterServic
             }
         }
 
+        if (result.isEmpty() && memoryContext != null) {
+            result = sanitizeMethods(memoryContext.getPreferredImageMethods());
+            if (!result.isEmpty()) {
+                source = "long_term_memory";
+                reason = "reuse_recalled_memory_methods";
+            }
+        }
+
         if (result.isEmpty()) {
             result = new ArrayList<>(DEFAULT_NON_VIP_METHODS);
             source = "default_policy";
@@ -99,12 +111,17 @@ public class ImageStrategyRouterServiceImpl implements ImageStrategyRouterServic
         }
 
         result = reorderMethods(result, diagramPreferred, realisticPreferred);
+        result = removeAvoidedMethods(result, memoryContext == null ? null : memoryContext.getAvoidImageMethods());
         if (diagramPreferred) {
             result = promote(result, ImageMethodEnum.MERMAID.getValue(), ImageMethodEnum.SVG_DIAGRAM.getValue(), ImageMethodEnum.ICONIFY.getValue());
             reason = appendReason(reason, "diagram_signal_detected");
         } else if (realisticPreferred) {
             result = promote(result, ImageMethodEnum.PEXELS.getValue(), ImageMethodEnum.NANO_BANANA.getValue());
             reason = appendReason(reason, "realistic_signal_detected");
+        }
+        if (memoryContext != null && memoryContext.getAvoidImageMethods() != null
+                && !memoryContext.getAvoidImageMethods().isEmpty()) {
+            reason = appendReason(reason, "avoid_failed_methods");
         }
 
         ImageStrategyDecisionVO decision = ImageStrategyDecisionVO.builder()
@@ -171,6 +188,20 @@ public class ImageStrategyRouterServiceImpl implements ImageStrategyRouterServic
             return promote(result, ImageMethodEnum.PEXELS.getValue(), ImageMethodEnum.NANO_BANANA.getValue());
         }
         return result;
+    }
+
+    private List<String> removeAvoidedMethods(List<String> methods, List<String> avoidMethods) {
+        if (methods == null || methods.isEmpty() || avoidMethods == null || avoidMethods.isEmpty()) {
+            return methods == null ? new ArrayList<>() : new ArrayList<>(methods);
+        }
+        Set<String> avoidSet = avoidMethods.stream()
+                .filter(Objects::nonNull)
+                .filter(value -> !value.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+        List<String> filtered = methods.stream()
+                .filter(method -> !avoidSet.contains(method))
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        return filtered.isEmpty() ? new ArrayList<>(methods) : filtered;
     }
 
     private List<String> promote(List<String> methods, String... preferred) {

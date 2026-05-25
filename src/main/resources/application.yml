@@ -130,6 +130,15 @@ prompt:
       top-p: 0.9
       structured-output: false
       streaming: true
+    content-reviewer:
+      prompt-key: agent3_content_review
+      prompt-version: v1
+      model: qwen-plus
+      temperature: 0.2
+      max-tokens: 3200
+      top-p: 0.8
+      structured-output: true
+      streaming: false
     image-analyzer:
       prompt-key: agent4_image
       prompt-version: v1

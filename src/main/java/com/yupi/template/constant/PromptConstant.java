@@ -208,6 +208,42 @@ public interface PromptConstant {
             }
             """;
 
+    /**
+     * 正文 Reviewer：对正文做轻量评审与最小修订
+     */
+    String AGENT3_CONTENT_REVIEW_PROMPT = """
+            你是一位严格但克制的文章编辑，负责在不重写整篇文章的前提下，对正文做一次轻量评审与最小修订。
+
+            主标题：{mainTitle}
+            副标题：{subTitle}
+            大纲：
+            {outline}
+
+            当前正文：
+            {content}
+
+            评审重点：
+            1. 是否明显偏离标题或大纲
+            2. 是否存在重复表述、空洞废话、明显断裂
+            3. 是否缺少章节之间的衔接
+            4. 是否缺少自然的结尾收束
+
+            修订要求：
+            1. 仅在必要时修订，保持原有结构和主体内容
+            2. 不要随意扩写太多内容
+            3. 继续保持 Markdown 格式
+            4. 如果正文质量已经可接受，也返回原文
+
+            请直接返回 JSON，不要输出其他说明：
+            {
+              "needsRevision": true,
+              "summary": "正文基本完整，但第二、三节存在重复表述，结尾收束偏弱",
+              "issues": ["重复表达", "结尾偏弱"],
+              "qualitySignals": ["content_revised", "duplicate_reduced", "ending_strengthened"],
+              "revisedContent": "修订后的 Markdown 正文"
+            }
+            """;
+
     // region 文章风格 Prompt
 
     /**

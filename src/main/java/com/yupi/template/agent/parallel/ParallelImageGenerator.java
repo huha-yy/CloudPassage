@@ -6,6 +6,8 @@ import com.yupi.template.agent.context.StreamHandlerContext;
 import com.yupi.template.agent.tools.ImageGenerationTool;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
+import com.yupi.template.model.vo.ImageFallbackDecisionVO;
+import com.yupi.template.service.ArticleMemoryService;
 import com.yupi.template.utils.GsonUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
 public class ParallelImageGenerator implements NodeAction {
 
     private final ImageGenerationTool imageGenerationTool;
+    private final ArticleMemoryService articleMemoryService;
 
     public static final String INPUT_IMAGE_REQUIREMENTS = "imageRequirements";
     public static final String OUTPUT_IMAGES = "images";
@@ -77,7 +80,8 @@ public class ParallelImageGenerator implements NodeAction {
                         )));
         
         // 并行执行不同类型的图片生成
-        List<ArticleState.ImageResult> allImages = executeParallel(groupedBySource, streamHandler);
+        ParallelGenerationOutcome outcome = executeParallel(groupedBySource, streamHandler, extractEnabledMethods(state), extractTaskId(state));
+        List<ArticleState.ImageResult> allImages = outcome.images();
         
         // 按 position 排序
         allImages.sort((a, b) -> {
@@ -88,19 +92,24 @@ public class ParallelImageGenerator implements NodeAction {
         
         log.info("ParallelImageGenerator 执行完成: 成功生成 {} 张图片", allImages.size());
         
-        return Map.of(OUTPUT_IMAGES, allImages);
+        return Map.of(
+                OUTPUT_IMAGES, allImages,
+                "imageFallbackRecords", outcome.fallbackRecords()
+        );
     }
 
     /**
      * 并行执行图片生成任务
      * 不同 imageSource 类型并行执行，同一类型内部串行执行
      */
-    private List<ArticleState.ImageResult> executeParallel(
+    private ParallelGenerationOutcome executeParallel(
             Map<String, List<ArticleState.ImageRequirement>> groupedBySource,
-            Consumer<String> streamHandler) {
+            Consumer<String> streamHandler,
+            List<String> enabledMethods,
+            String taskId) {
         
-        // 使用线程安全的列表收集结果
         CopyOnWriteArrayList<ArticleState.ImageResult> allImages = new CopyOnWriteArrayList<>();
+        CopyOnWriteArrayList<ArticleState.ImageFallbackRecord> fallbackRecords = new CopyOnWriteArrayList<>();
         
         // 为每种 imageSource 创建异步任务
         List<CompletableFuture<Void>> futures = groupedBySource.entrySet().stream()
@@ -113,7 +122,7 @@ public class ParallelImageGenerator implements NodeAction {
                     // 同一类型内部串行执行
                     for (ArticleState.ImageRequirement req : requirements) {
                         try {
-                            ImageGenerationTool.ImageGenerationResult result = 
+                            ImageGenerationTool.ImageGenerationResult result =
                                     imageGenerationTool.generateImageDirect(
                                             req.getImageSource(),
                                             req.getKeywords(),
@@ -121,12 +130,14 @@ public class ParallelImageGenerator implements NodeAction {
                                             req.getPosition(),
                                             req.getType(),
                                             req.getSectionTitle(),
-                                            req.getPlaceholderId()
+                                            req.getPlaceholderId(),
+                                            enabledMethods
                                     );
                             
                             if (result.isSuccess()) {
                                 ArticleState.ImageResult imageResult = convertToImageResult(result);
                                 allImages.add(imageResult);
+                                fallbackRecords.add(convertToFallbackRecord(req, result));
                                 
                                 // 推送单张配图完成消息
                                 if (streamHandler != null) {
@@ -153,8 +164,26 @@ public class ParallelImageGenerator implements NodeAction {
         
         // 等待所有任务完成
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        
-        return new ArrayList<>(allImages);
+
+        if (taskId != null && !taskId.isBlank() && !fallbackRecords.isEmpty()) {
+            List<ImageFallbackDecisionVO> decisions = fallbackRecords.stream()
+                    .map(record -> ImageFallbackDecisionVO.builder()
+                            .requestedMethod(record.getRequestedMethod())
+                            .finalMethod(record.getFinalMethod())
+                            .fallbackApplied(record.getFallbackApplied())
+                            .fallbackReason(record.getFallbackReason())
+                            .attemptedMethods(record.getAttemptedMethods())
+                            .build())
+                    .toList();
+            ArticleState state = new ArticleState();
+            state.setTaskId(taskId);
+            state.setPhase("CONTENT_GENERATING");
+            state.setImages(new ArrayList<>(allImages));
+            state.setImageFallbackRecords(new ArrayList<>(fallbackRecords));
+            articleMemoryService.recordImageFallbackDecision(taskId, state, decisions);
+        }
+
+        return new ParallelGenerationOutcome(new ArrayList<>(allImages), new ArrayList<>(fallbackRecords));
     }
 
     /**
@@ -169,7 +198,25 @@ public class ParallelImageGenerator implements NodeAction {
         imageResult.setSectionTitle(genResult.getSectionTitle());
         imageResult.setDescription(genResult.getDescription());
         imageResult.setPlaceholderId(genResult.getPlaceholderId());
+        imageResult.setRequestedMethod(genResult.getRequestedMethod());
+        imageResult.setFallbackApplied(genResult.getFallbackApplied());
+        imageResult.setFallbackReason(genResult.getFallbackReason());
+        imageResult.setAttemptedMethods(genResult.getAttemptedMethods());
         return imageResult;
+    }
+
+    private ArticleState.ImageFallbackRecord convertToFallbackRecord(ArticleState.ImageRequirement requirement,
+                                                                     ImageGenerationTool.ImageGenerationResult genResult) {
+        ArticleState.ImageFallbackRecord record = new ArticleState.ImageFallbackRecord();
+        record.setPosition(genResult.getPosition());
+        record.setRequestedMethod(genResult.getRequestedMethod());
+        record.setFinalMethod(genResult.getMethod());
+        record.setFallbackApplied(genResult.getFallbackApplied());
+        record.setFallbackReason(genResult.getFallbackReason());
+        record.setAttemptedMethods(genResult.getAttemptedMethods());
+        record.setSectionTitle(requirement.getSectionTitle());
+        record.setPlaceholderId(requirement.getPlaceholderId());
+        return record;
     }
 
     /**
@@ -187,5 +234,20 @@ public class ParallelImageGenerator implements NodeAction {
             }
         }
         return results;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> extractEnabledMethods(OverAllState state) {
+        return state.value("enabledImageMethods")
+                .map(v -> v instanceof List ? (List<String>) v : null)
+                .orElse(null);
+    }
+
+    private String extractTaskId(OverAllState state) {
+        return state.value("taskId").map(Object::toString).orElse(null);
+    }
+
+    private record ParallelGenerationOutcome(List<ArticleState.ImageResult> images,
+                                             List<ArticleState.ImageFallbackRecord> fallbackRecords) {
     }
 }

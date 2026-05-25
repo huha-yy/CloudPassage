@@ -231,6 +231,11 @@ public class ArticleNodeReplayServiceImpl implements ArticleNodeReplayService {
         snapshot.setDecisionSource(metadata.getDecisionSource());
         snapshot.setDecisionReason(metadata.getDecisionReason());
         snapshot.setDecisionSummary(metadata.getDecisionSummary());
+        snapshot.setFallbackSource(metadata.getFallbackSource());
+        snapshot.setFallbackReason(metadata.getFallbackReason());
+        snapshot.setFallbackSummary(metadata.getFallbackSummary());
+        snapshot.setMemoryContextSummary(metadata.getMemoryContextSummary());
+        snapshot.setMemoryContextSnapshot(metadata.getMemoryContextSnapshot());
     }
 
     private void expireKeys(String taskId) {

@@ -1452,6 +1452,7 @@ const getNodeDisplayName = (node: string) => {
     agent1_generate_titles: '生成标题',
     agent2_generate_outline: '生成大纲',
     agent3_generate_content: '生成正文',
+    agent3_review_content: '正文评审',
     agent4_analyze_image_requirements: '分析配图需求',
     agent5_generate_images: '生成配图',
     agent6_merge_content: '图文合成',
@@ -1477,6 +1478,7 @@ const getAgentDisplayName = (agentName: string) => {
     agent1_generate_titles: '生成标题',
     agent2_generate_outline: '生成大纲',
     agent3_generate_content: '生成正文',
+    agent3_review_content: '正文评审',
     agent4_analyze_image_requirements: '分析配图需求',
     agent5_generate_images: '生成配图',
     agent6_merge_content: '图文合成',
@@ -1540,6 +1542,11 @@ const handleSSEMessage = async (msg: SSEMessage) => {
       isStreaming.value = false
       currentStep.value = 3
       addLog('正文生成完成', 'success')
+      break
+    case 'AGENT3_REVIEW_COMPLETE':
+      currentStep.value = 3
+      article.value.content = String(payload.content || article.value.content || '')
+      addLog('正文评审完成', 'success')
       break
     case 'AGENT4_COMPLETE': {
       currentStep.value = 3

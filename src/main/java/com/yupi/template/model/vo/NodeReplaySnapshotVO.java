@@ -58,6 +58,16 @@ public class NodeReplaySnapshotVO implements Serializable {
 
     private String decisionSummary;
 
+    private String fallbackSource;
+
+    private String fallbackReason;
+
+    private String fallbackSummary;
+
+    private String memoryContextSummary;
+
+    private String memoryContextSnapshot;
+
     private String inputSummary;
 
     private String outputSummary;

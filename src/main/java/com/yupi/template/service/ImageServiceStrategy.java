@@ -62,37 +62,46 @@ public class ImageServiceStrategy {
      * @return 图片获取结果（包含 COS URL）
      */
     public ImageResult getImageAndUpload(String imageSource, ImageRequest request) {
+        ImageResult strictResult = tryGetImageAndUpload(imageSource, request);
+        if (strictResult != null && strictResult.isSuccess()) {
+            return strictResult;
+        }
+        return handleFallbackWithUpload(request == null ? null : request.getPosition());
+    }
+
+    /**
+     * Strict image retrieval without automatic fallback routing.
+     */
+    public ImageResult tryGetImageAndUpload(String imageSource, ImageRequest request) {
         ImageMethodEnum method = resolveMethod(imageSource);
         ImageSearchService service = serviceMap.get(method);
-        
+
         if (service == null || !service.isAvailable()) {
-            log.warn("图片服务不可用: {}, 尝试降级", method);
-            return handleFallbackWithUpload(request.getPosition());
+            log.warn("图片服务不可用: {}, strict mode returns null", method);
+            return null;
         }
 
         try {
-            // 1. 获取图片数据
             ImageData imageData = service.getImageData(request);
-            
+
             if (imageData == null || !imageData.isValid()) {
-                log.warn("图片数据获取失败, 使用降级方案, method={}", method);
-                return handleFallbackWithUpload(request.getPosition());
+                log.warn("图片数据获取失败, strict mode returns null, method={}", method);
+                return null;
             }
-            
-            // 2. 上传到 COS
+
             String folder = getFolderForMethod(method);
             String cosUrl = cosService.uploadImageData(imageData, folder);
-            
+
             if (cosUrl != null && !cosUrl.isEmpty()) {
                 log.info("图片获取并上传成功, method={}, cosUrl={}", method, cosUrl);
                 return new ImageResult(cosUrl, method);
             } else {
-                log.warn("图片上传 COS 失败, 使用降级方案, method={}", method);
-                return handleFallbackWithUpload(request.getPosition());
+                log.warn("图片上传 COS 失败, strict mode returns null, method={}", method);
+                return null;
             }
         } catch (Exception e) {
-            log.error("获取图片并上传异常, method={}", method, e);
-            return handleFallbackWithUpload(request.getPosition());
+            log.error("获取图片并上传异常, strict mode returns null, method={}", method, e);
+            return null;
         }
     }
 

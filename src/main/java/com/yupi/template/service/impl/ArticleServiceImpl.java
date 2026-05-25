@@ -16,6 +16,7 @@ import com.yupi.template.model.entity.User;
 import com.yupi.template.model.enums.ArticlePhaseEnum;
 import com.yupi.template.model.enums.ArticleStatusEnum;
 import com.yupi.template.model.enums.ImageMethodEnum;
+import com.yupi.template.model.vo.ArticleMemoryContextVO;
 import com.yupi.template.model.vo.ArticleTaskMemoryVO;
 import com.yupi.template.model.vo.ArticleTaskSnapshotVO;
 import com.yupi.template.model.vo.ArticleVO;
@@ -126,6 +127,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     @Override
     public UserCreationPreferenceVO getUserCreationPreference(User loginUser) {
         return articleMemoryService.getUserPreference(loginUser.getId());
+    }
+
+    @Override
+    public ArticleMemoryContextVO getCreationMemoryContext(String taskId, User loginUser) {
+        Article article = getArticleWithPermission(taskId, loginUser);
+        return articleMemoryService.buildCreationMemoryContext(taskId, article.getUserId());
     }
 
     @Override
@@ -521,7 +528,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             case "workflow_phase_1", "agent1_generate_titles" -> ArticlePhaseEnum.TITLE_GENERATING.getValue();
             case "workflow_phase_2", "agent2_generate_outline", "ai_modify_outline" ->
                     ArticlePhaseEnum.OUTLINE_GENERATING.getValue();
-            case "workflow_phase_3", "agent3_generate_content", "agent4_analyze_image_requirements",
+            case "workflow_phase_3", "agent3_generate_content", "agent3_review_content", "agent4_analyze_image_requirements",
                     "agent5_generate_images", "agent6_merge_content" ->
                     ArticlePhaseEnum.CONTENT_GENERATING.getValue();
             default -> null;

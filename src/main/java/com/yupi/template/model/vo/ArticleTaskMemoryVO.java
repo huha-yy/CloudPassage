@@ -50,6 +50,8 @@ public class ArticleTaskMemoryVO implements Serializable {
 
     private MemorySummaryVO contentSummary;
 
+    private MemoryContentReviewVO contentReview;
+
     private MemoryImageStrategyVO imageStrategy;
 
     private List<MemorySignalVO> qualitySignals;
@@ -100,6 +102,32 @@ public class ArticleTaskMemoryVO implements Serializable {
         private Integer generatedCount;
 
         private List<String> sources;
+
+        private Integer fallbackCount;
+
+        private String fallbackSummary;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MemoryContentReviewVO implements Serializable {
+
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        private Boolean needsRevision;
+
+        private Boolean revised;
+
+        private Integer issueCount;
+
+        private String summary;
+
+        private List<String> issues;
+
+        private List<String> qualitySignals;
     }
 
     @Data

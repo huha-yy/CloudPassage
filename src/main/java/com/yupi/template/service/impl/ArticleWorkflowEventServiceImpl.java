@@ -101,12 +101,21 @@ public class ArticleWorkflowEventServiceImpl implements ArticleWorkflowEventServ
             case AGENT3_COMPLETE -> createEvent(taskId, SseMessageTypeEnum.AGENT3_COMPLETE,
                     ArticlePhaseEnum.CONTENT_GENERATING.getValue(), 3,
                     new HashMap<>());
+            case AGENT3_REVIEW_COMPLETE -> createEvent(taskId, SseMessageTypeEnum.AGENT3_REVIEW_COMPLETE,
+                    ArticlePhaseEnum.CONTENT_GENERATING.getValue(), 3,
+                    payload(
+                            "content", state.getContent(),
+                            "contentReview", state.getContentReview()
+                    ));
             case AGENT4_COMPLETE -> createEvent(taskId, SseMessageTypeEnum.AGENT4_COMPLETE,
                     ArticlePhaseEnum.CONTENT_GENERATING.getValue(), 4,
                     payload("imageRequirements", state.getImageRequirements()));
             case AGENT5_COMPLETE -> createEvent(taskId, SseMessageTypeEnum.AGENT5_COMPLETE,
                     ArticlePhaseEnum.CONTENT_GENERATING.getValue(), 5,
-                    payload("images", state.getImages()));
+                    payload(
+                            "images", state.getImages(),
+                            "imageFallbackRecords", state.getImageFallbackRecords()
+                    ));
             case MERGE_COMPLETE -> createEvent(taskId, SseMessageTypeEnum.MERGE_COMPLETE,
                     ArticlePhaseEnum.CONTENT_GENERATING.getValue(), 6,
                     payload("fullContent", state.getFullContent()));
@@ -129,6 +138,13 @@ public class ArticleWorkflowEventServiceImpl implements ArticleWorkflowEventServ
     private Map<String, Object> payload(String key, Object value) {
         Map<String, Object> payload = new HashMap<>();
         payload.put(key, value);
+        return payload;
+    }
+
+    private Map<String, Object> payload(String key1, Object value1, String key2, Object value2) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put(key1, value1);
+        payload.put(key2, value2);
         return payload;
     }
 

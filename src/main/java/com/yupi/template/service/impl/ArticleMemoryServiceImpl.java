@@ -9,7 +9,10 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.yupi.template.mapper.ArticleMapper;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.entity.Article;
+import com.yupi.template.model.enums.ArticleStatusEnum;
+import com.yupi.template.model.vo.ArticleMemoryContextVO;
 import com.yupi.template.model.vo.ArticleTaskMemoryVO;
+import com.yupi.template.model.vo.ImageFallbackDecisionVO;
 import com.yupi.template.model.vo.ImageStrategyDecisionVO;
 import com.yupi.template.model.vo.NodeExecutionLogVO;
 import com.yupi.template.model.vo.UserCreationPreferenceVO;
@@ -47,6 +50,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
     private static final int MAX_SUMMARY_LENGTH = 200;
     private static final int MAX_HIGHLIGHTS = 4;
     private static final int MAX_FAILURE_TAGS = 8;
+    private static final int MAX_RECALLED_CASES = 3;
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
@@ -266,6 +270,47 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
     }
 
     @Override
+    public void recordImageFallbackDecision(String taskId, ArticleState state, List<ImageFallbackDecisionVO> decisions) {
+        if (isBlank(taskId) || decisions == null || decisions.isEmpty()) {
+            return;
+        }
+        ArticleTaskMemoryVO memory = getOrCreate(taskId);
+        mergeArticle(memory, findArticle(taskId));
+        mergeState(memory, state);
+        ArticleTaskMemoryVO.MemoryImageStrategyVO current = memory.getImageStrategy();
+        int fallbackCount = (int) decisions.stream()
+                .filter(Objects::nonNull)
+                .filter(decision -> Boolean.TRUE.equals(decision.getFallbackApplied()))
+                .count();
+        String fallbackSummary = decisions.stream()
+                .filter(Objects::nonNull)
+                .limit(3)
+                .map(decision -> firstNonBlank(decision.getRequestedMethod(), "--")
+                        + "->" + firstNonBlank(decision.getFinalMethod(), "--"))
+                .collect(Collectors.joining(", "));
+        memory.setImageStrategy(ArticleTaskMemoryVO.MemoryImageStrategyVO.builder()
+                .methods(current == null ? null : current.getMethods())
+                .needImages(current == null ? null : current.getNeedImages())
+                .decisionReason(current == null ? null : current.getDecisionReason())
+                .decisionSource(current == null ? null : current.getDecisionSource())
+                .requirementCount(current == null ? null : current.getRequirementCount())
+                .generatedCount(current == null ? null : current.getGeneratedCount())
+                .sources(current == null ? null : current.getSources())
+                .fallbackCount(fallbackCount)
+                .fallbackSummary(isBlank(fallbackSummary) ? null : fallbackSummary)
+                .build());
+        addSignal(memory, buildSignal(
+                "image_fallback_applied",
+                "图片降级已触发",
+                "降级次数=" + fallbackCount + "，链路=" + firstNonBlank(fallbackSummary, "--"),
+                state != null ? state.getPhase() : memory.getCurrentPhase(),
+                "agent5_generate_images"
+        ));
+        touch(memory);
+        persist(memory);
+    }
+
+    @Override
     public ArticleTaskMemoryVO getTaskMemory(String taskId) {
         return readMemory(taskId);
     }
@@ -276,6 +321,33 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             return null;
         }
         return readUserPreference(userId);
+    }
+
+    @Override
+    public ArticleMemoryContextVO buildCreationMemoryContext(String taskId, Long userId) {
+        ArticleTaskMemoryVO currentMemory = getTaskMemory(taskId);
+        Long resolvedUserId = userId != null ? userId : currentMemory == null ? null : currentMemory.getUserId();
+        UserCreationPreferenceVO preference = resolvedUserId == null ? null : getUserPreference(resolvedUserId);
+        List<ArticleMemoryContextVO.RecalledMemoryCaseVO> successCases = recallSimilarCases(
+                taskId, resolvedUserId, currentMemory, ArticleStatusEnum.COMPLETED.getValue(), MAX_RECALLED_CASES
+        );
+        List<ArticleMemoryContextVO.RecalledMemoryCaseVO> failureCases = recallSimilarCases(
+                taskId, resolvedUserId, currentMemory, ArticleStatusEnum.FAILED.getValue(), MAX_RECALLED_CASES
+        );
+
+        return ArticleMemoryContextVO.builder()
+                .taskId(taskId)
+                .userId(resolvedUserId)
+                .currentTaskMemory(currentMemory)
+                .userPreference(preference)
+                .recalledSuccessCases(successCases)
+                .recalledFailureCases(failureCases)
+                .preferredImageMethods(resolveContextPreferredImageMethods(currentMemory, preference, successCases))
+                .avoidImageMethods(resolveContextAvoidImageMethods(failureCases))
+                .qualityHints(resolveQualityHints(currentMemory, successCases))
+                .failureHints(resolveFailureHints(preference, failureCases))
+                .updatedAt(System.currentTimeMillis())
+                .build();
     }
 
     private ArticleTaskMemoryVO getOrCreate(String taskId) {
@@ -359,7 +431,59 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             memory.setOutlineSummary(buildOutlineSummary(state.getOutline().getSections(), "workflow_outline"));
         }
         memory.setContentSummary(buildContentSummary(state.getFullContent(), state.getContent(), "workflow_content"));
+        mergeContentReview(memory, state);
         mergeImageStrategy(memory, state);
+    }
+
+    private void mergeContentReview(ArticleTaskMemoryVO memory, ArticleState state) {
+        if (memory == null || state == null || state.getContentReview() == null) {
+            return;
+        }
+        ArticleState.ContentReviewResult review = state.getContentReview();
+        boolean revised = !isBlank(review.getRevisedContent())
+                && !Objects.equals(review.getRevisedContent(), state.getContent());
+        memory.setContentReview(ArticleTaskMemoryVO.MemoryContentReviewVO.builder()
+                .needsRevision(review.getNeedsRevision())
+                .revised(revised || Boolean.TRUE.equals(review.getNeedsRevision()))
+                .issueCount(review.getIssues() == null ? 0 : review.getIssues().size())
+                .summary(review.getSummary())
+                .issues(normalizeStringList(review.getIssues()))
+                .qualitySignals(normalizeStringList(review.getQualitySignals()))
+                .build());
+        mergeContentReviewSignals(memory, review, state.getPhase());
+    }
+
+    private void mergeContentReviewSignals(ArticleTaskMemoryVO memory,
+                                           ArticleState.ContentReviewResult review,
+                                           String phase) {
+        if (memory == null || review == null) {
+            return;
+        }
+        addSignal(memory, buildSignal(
+                "content_reviewed",
+                mapSignalLabel("content_reviewed"),
+                firstNonBlank(review.getSummary(), "\u5df2\u5b8c\u6210\u6b63\u6587\u8bc4\u5ba1"),
+                phase,
+                "agent3_review_content"
+        ));
+        if (Boolean.TRUE.equals(review.getNeedsRevision())) {
+            addSignal(memory, buildSignal(
+                    "content_revised",
+                    mapSignalLabel("content_revised"),
+                    firstNonBlank(review.getSummary(), "\u6b63\u6587\u5df2\u6309\u8bc4\u5ba1\u610f\u89c1\u6700\u5c0f\u4fee\u8ba2"),
+                    phase,
+                    "agent3_review_content"
+            ));
+        }
+        for (String signalCode : normalizeStringList(review.getQualitySignals())) {
+            addSignal(memory, buildSignal(
+                    signalCode,
+                    mapSignalLabel(signalCode),
+                    firstNonBlank(review.getSummary(), signalCode),
+                    phase,
+                    "agent3_review_content"
+            ));
+        }
     }
 
     private void mergeImageStrategy(ArticleTaskMemoryVO memory, ArticleState state) {
@@ -381,6 +505,17 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                 .collect(Collectors.toList());
         int requirementCount = state.getImageRequirements() == null ? 0 : state.getImageRequirements().size();
         int generatedCount = state.getImages() == null ? 0 : state.getImages().size();
+        int fallbackCount = state.getImageFallbackRecords() == null ? 0 : (int) state.getImageFallbackRecords().stream()
+                .filter(Objects::nonNull)
+                .filter(record -> Boolean.TRUE.equals(record.getFallbackApplied()))
+                .count();
+        String fallbackSummary = state.getImageFallbackRecords() == null ? null : state.getImageFallbackRecords().stream()
+                .filter(Objects::nonNull)
+                .filter(record -> Boolean.TRUE.equals(record.getFallbackApplied()))
+                .limit(3)
+                .map(record -> firstNonBlank(record.getRequestedMethod(), "--")
+                        + "->" + firstNonBlank(record.getFinalMethod(), "--"))
+                .collect(Collectors.joining(", "));
         if (methods.isEmpty() && sources.isEmpty() && requirementCount == 0 && generatedCount == 0 && current != null) {
             return;
         }
@@ -398,6 +533,8 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                 .sources(sources.isEmpty() ? null : sources)
                 .requirementCount(requirementCount > 0 ? requirementCount : currentValue(current != null ? current.getRequirementCount() : null))
                 .generatedCount(generatedCount > 0 ? generatedCount : currentValue(current != null ? current.getGeneratedCount() : null))
+                .fallbackCount(fallbackCount > 0 ? fallbackCount : currentValue(current != null ? current.getFallbackCount() : null))
+                .fallbackSummary(!isBlank(fallbackSummary) ? fallbackSummary : current == null ? null : current.getFallbackSummary())
                 .build());
     }
 
@@ -426,6 +563,179 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
         if (failedNode != null) {
             memory.setLastFailedNode(failedNode);
         }
+    }
+
+    private List<ArticleMemoryContextVO.RecalledMemoryCaseVO> recallSimilarCases(String taskId,
+                                                                                  Long userId,
+                                                                                  ArticleTaskMemoryVO currentMemory,
+                                                                                  String expectedStatus,
+                                                                                  int limit) {
+        if (userId == null || limit <= 0) {
+            return Collections.emptyList();
+        }
+        List<Article> articles = articleMapper.selectListByQuery(QueryWrapper.create()
+                .eq("userId", userId)
+                .eq("isDelete", 0)
+                .eq("status", expectedStatus)
+                .orderBy("updateTime", false));
+        if (articles == null || articles.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ArticleMemoryContextVO.RecalledMemoryCaseVO> cases = new ArrayList<>();
+        for (Article article : articles) {
+            if (article == null || isBlank(article.getTaskId()) || Objects.equals(article.getTaskId(), taskId)) {
+                continue;
+            }
+            ArticleTaskMemoryVO memory = readMemory(article.getTaskId());
+            ArticleMemoryContextVO.RecalledMemoryCaseVO recalled = buildRecalledCase(article, memory, currentMemory);
+            if (recalled != null) {
+                cases.add(recalled);
+            }
+        }
+        return cases.stream()
+                .sorted((left, right) -> Integer.compare(currentValue(right.getScore()), currentValue(left.getScore())))
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
+
+    private ArticleMemoryContextVO.RecalledMemoryCaseVO buildRecalledCase(Article article,
+                                                                          ArticleTaskMemoryVO memory,
+                                                                          ArticleTaskMemoryVO currentMemory) {
+        if (article == null) {
+            return null;
+        }
+        String status = article.getStatus();
+        List<String> imageMethods = resolveMemoryImageMethods(memory, article);
+        List<String> qualitySignals = memory == null || memory.getQualitySignals() == null
+                ? Collections.emptyList()
+                : memory.getQualitySignals().stream()
+                .filter(Objects::nonNull)
+                .map(ArticleTaskMemoryVO.MemorySignalVO::getCode)
+                .filter(Objects::nonNull)
+                .distinct()
+                .limit(MAX_HIGHLIGHTS)
+                .collect(Collectors.toList());
+        String summary = buildRecalledCaseSummary(memory, article, status);
+        int score = scoreRecalledCase(article, memory, currentMemory);
+        return ArticleMemoryContextVO.RecalledMemoryCaseVO.builder()
+                .taskId(article.getTaskId())
+                .status(status)
+                .topic(article.getTopic())
+                .style(article.getStyle())
+                .summary(summary)
+                .failedNode(memory == null ? null : memory.getLastFailedNode())
+                .imageMethods(imageMethods.isEmpty() ? null : imageMethods)
+                .qualitySignals(qualitySignals.isEmpty() ? null : qualitySignals)
+                .score(score)
+                .updatedAt(resolveArticleUpdatedAt(article))
+                .build();
+    }
+
+    private int scoreRecalledCase(Article article,
+                                  ArticleTaskMemoryVO memory,
+                                  ArticleTaskMemoryVO currentMemory) {
+        int score = 0;
+        if (article == null || currentMemory == null) {
+            return score;
+        }
+        if (!isBlank(currentMemory.getStyle()) && Objects.equals(currentMemory.getStyle(), article.getStyle())) {
+            score += 3;
+        }
+        if (containsIgnoreCase(article.getTopic(), currentMemory.getTopic())
+                || containsIgnoreCase(currentMemory.getTopic(), article.getTopic())) {
+            score += 2;
+        }
+        if (!isBlank(currentMemory.getUserDescription())
+                && containsIgnoreCase(article.getUserDescription(), currentMemory.getUserDescription())) {
+            score += 1;
+        }
+        if (memory != null && currentMemory.getImageStrategy() != null
+                && memory.getImageStrategy() != null
+                && hasIntersect(currentMemory.getImageStrategy().getMethods(), memory.getImageStrategy().getMethods())) {
+            score += 2;
+        }
+        return score;
+    }
+
+    private String buildRecalledCaseSummary(ArticleTaskMemoryVO memory, Article article, String status) {
+        if (memory != null && memory.getContentReview() != null && !isBlank(memory.getContentReview().getSummary())) {
+            return shorten(memory.getContentReview().getSummary(), 120);
+        }
+        if (memory != null && memory.getContentSummary() != null && !isBlank(memory.getContentSummary().getText())) {
+            return shorten(memory.getContentSummary().getText(), 120);
+        }
+        if (ArticleStatusEnum.FAILED.getValue().equals(status) && memory != null && !isBlank(memory.getRecentErrorMessage())) {
+            return shorten(memory.getRecentErrorMessage(), 120);
+        }
+        return buildTopicSummary(article);
+    }
+
+    private String buildTopicSummary(Article article) {
+        if (article == null) {
+            return null;
+        }
+        String topic = firstNonBlank(article.getTopic(), "--");
+        String style = firstNonBlank(article.getStyle(), "--");
+        return "topic=" + topic + ", style=" + style;
+    }
+
+    private List<String> resolveContextPreferredImageMethods(ArticleTaskMemoryVO currentMemory,
+                                                             UserCreationPreferenceVO preference,
+                                                             List<ArticleMemoryContextVO.RecalledMemoryCaseVO> successCases) {
+        LinkedHashSet<String> methods = new LinkedHashSet<>();
+        if (currentMemory != null && currentMemory.getImageStrategy() != null) {
+            addAllNonBlank(methods, currentMemory.getImageStrategy().getMethods());
+        }
+        if (preference != null) {
+            addAllNonBlank(methods, preference.getPreferredImageMethods());
+        }
+        if (successCases != null) {
+            for (ArticleMemoryContextVO.RecalledMemoryCaseVO successCase : successCases) {
+                addAllNonBlank(methods, successCase.getImageMethods());
+            }
+        }
+        return new ArrayList<>(methods);
+    }
+
+    private List<String> resolveContextAvoidImageMethods(List<ArticleMemoryContextVO.RecalledMemoryCaseVO> failureCases) {
+        LinkedHashSet<String> methods = new LinkedHashSet<>();
+        if (failureCases == null) {
+            return new ArrayList<>();
+        }
+        for (ArticleMemoryContextVO.RecalledMemoryCaseVO failureCase : failureCases) {
+            addAllNonBlank(methods, failureCase.getImageMethods());
+        }
+        return new ArrayList<>(methods);
+    }
+
+    private List<String> resolveQualityHints(ArticleTaskMemoryVO currentMemory,
+                                             List<ArticleMemoryContextVO.RecalledMemoryCaseVO> successCases) {
+        LinkedHashSet<String> hints = new LinkedHashSet<>();
+        if (currentMemory != null && currentMemory.getContentReview() != null) {
+            addAllNonBlank(hints, currentMemory.getContentReview().getQualitySignals());
+        }
+        if (successCases != null) {
+            for (ArticleMemoryContextVO.RecalledMemoryCaseVO successCase : successCases) {
+                addAllNonBlank(hints, successCase.getQualitySignals());
+            }
+        }
+        return new ArrayList<>(hints);
+    }
+
+    private List<String> resolveFailureHints(UserCreationPreferenceVO preference,
+                                             List<ArticleMemoryContextVO.RecalledMemoryCaseVO> failureCases) {
+        LinkedHashSet<String> hints = new LinkedHashSet<>();
+        if (preference != null) {
+            addAllNonBlank(hints, preference.getRecentFailureTags());
+        }
+        if (failureCases != null) {
+            for (ArticleMemoryContextVO.RecalledMemoryCaseVO failureCase : failureCases) {
+                if (!isBlank(failureCase.getFailedNode())) {
+                    hints.add(failureCase.getFailedNode());
+                }
+            }
+        }
+        return new ArrayList<>(hints);
     }
 
     private ArticleTaskMemoryVO readMemory(String taskId) {
@@ -614,7 +924,6 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                                        ArticleTaskMemoryVO.MemorySignalVO value,
                                        int maxSize) {
         items.removeIf(item -> Objects.equals(item.getCode(), value.getCode())
-                && Objects.equals(item.getDetail(), value.getDetail())
                 && Objects.equals(item.getPhase(), value.getPhase())
                 && Objects.equals(item.getNode(), value.getNode()));
         items.add(0, value);
@@ -765,6 +1074,7 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             case "workflow_phase_2", "agent2_generate_outline", "ai_modify_outline" ->
                     buildOutlineNodeSnapshot(node, phase, status, state);
             case "workflow_phase_3", "agent3_generate_content" -> buildContentNodeSnapshot(node, phase, status, state);
+            case "agent3_review_content" -> buildContentReviewSnapshot(node, phase, status, state);
             case "image_strategy_router" -> buildImageStrategySnapshot(node, phase, status, state);
             case "agent4_analyze_image_requirements" -> buildImageRequirementSnapshot(node, phase, status, state);
             case "agent5_generate_images" -> buildImageGenerationSnapshot(node, phase, status, state);
@@ -893,6 +1203,28 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                 .build();
     }
 
+    private ArticleTaskMemoryVO.NodeSnapshotVO buildContentReviewSnapshot(String node,
+                                                                          String phase,
+                                                                          String status,
+                                                                          ArticleState state) {
+        ArticleState.ContentReviewResult review = state == null ? null : state.getContentReview();
+        List<String> highlights = review == null || review.getIssues() == null
+                ? Collections.emptyList()
+                : review.getIssues().stream().limit(MAX_HIGHLIGHTS).collect(Collectors.toList());
+        return ArticleTaskMemoryVO.NodeSnapshotVO.builder()
+                .node(node)
+                .phase(phase)
+                .label("正文评审")
+                .status(status)
+                .summary(review == null ? "正文评审未产出结果"
+                        : firstNonBlank(review.getSummary(),
+                        Boolean.TRUE.equals(review.getNeedsRevision()) ? "正文已完成最小修订" : "正文评审通过"))
+                .detail(review == null ? null : "needsRevision=" + review.getNeedsRevision())
+                .highlights(highlights.isEmpty() ? null : highlights)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
     private ArticleTaskMemoryVO.NodeSnapshotVO buildImageGenerationSnapshot(String node,
                                                                             String phase,
                                                                             String status,
@@ -911,11 +1243,45 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
                 .phase(phase)
                 .label("图片生成")
                 .status(status)
-                .summary(images.isEmpty() ? "尚未生成图片" : "已生成 " + images.size() + " 张图片")
-                .detail(images.isEmpty() ? null : "首张图片方法=" + firstNonBlank(images.get(0).getMethod(), "--"))
+                .summary(buildImageGenerationSummary(images, state == null ? null : state.getImageFallbackRecords()))
+                .detail(buildImageGenerationDetail(images, state == null ? null : state.getImageFallbackRecords()))
                 .highlights(highlights.isEmpty() ? null : highlights)
                 .timestamp(System.currentTimeMillis())
                 .build();
+    }
+
+    private String buildImageGenerationSummary(List<ArticleState.ImageResult> images,
+                                               List<ArticleState.ImageFallbackRecord> fallbackRecords) {
+        if (images == null || images.isEmpty()) {
+            return "尚未生成图片";
+        }
+        long fallbackCount = fallbackRecords == null ? 0 : fallbackRecords.stream()
+                .filter(Objects::nonNull)
+                .filter(record -> Boolean.TRUE.equals(record.getFallbackApplied()))
+                .count();
+        if (fallbackCount <= 0) {
+            return "已生成 " + images.size() + " 张图片";
+        }
+        return "已生成 " + images.size() + " 张图片，其中 " + fallbackCount + " 张触发降级";
+    }
+
+    private String buildImageGenerationDetail(List<ArticleState.ImageResult> images,
+                                              List<ArticleState.ImageFallbackRecord> fallbackRecords) {
+        if (images == null || images.isEmpty()) {
+            return null;
+        }
+        String firstMethod = "首张图片方法=" + firstNonBlank(images.get(0).getMethod(), "--");
+        if (fallbackRecords == null) {
+            return firstMethod;
+        }
+        String fallbackSummary = fallbackRecords.stream()
+                .filter(Objects::nonNull)
+                .filter(record -> Boolean.TRUE.equals(record.getFallbackApplied()))
+                .limit(2)
+                .map(record -> firstNonBlank(record.getRequestedMethod(), "--")
+                        + "->" + firstNonBlank(record.getFinalMethod(), "--"))
+                .collect(Collectors.joining(", "));
+        return isBlank(fallbackSummary) ? firstMethod : firstMethod + "，降级链路=" + fallbackSummary;
     }
 
     private ArticleTaskMemoryVO.NodeSnapshotVO buildMergeSnapshot(String node,
@@ -981,12 +1347,17 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
 
     private String mapSignalLabel(String code) {
         return switch (code) {
-            case "task_created" -> "任务已创建";
-            case "title_selected" -> "标题已选定";
-            case "outline_locked" -> "大纲已锁定";
-            case "task_completed" -> "任务完成";
-            case "task_failed" -> "任务失败";
-            case "task_resumed" -> "任务恢复";
+            case "task_created" -> "\u4efb\u52a1\u5df2\u521b\u5efa";
+            case "title_selected" -> "\u6807\u9898\u5df2\u9009\u5b9a";
+            case "outline_locked" -> "\u5927\u7eb2\u5df2\u9501\u5b9a";
+            case "content_reviewed" -> "\u6b63\u6587\u5df2\u8bc4\u5ba1";
+            case "content_revised" -> "\u6b63\u6587\u5df2\u4fee\u8ba2";
+            case "duplicate_reduced" -> "\u91cd\u590d\u8868\u8fbe\u5df2\u6536\u655b";
+            case "ending_strengthened" -> "\u7ed3\u5c3e\u6536\u675f\u5df2\u589e\u5f3a";
+            case "outline_alignment_checked" -> "\u5927\u7eb2\u5bf9\u9f50\u5df2\u68c0\u67e5";
+            case "task_completed" -> "\u4efb\u52a1\u5b8c\u6210";
+            case "task_failed" -> "\u4efb\u52a1\u5931\u8d25";
+            case "task_resumed" -> "\u4efb\u52a1\u6062\u590d";
             default -> code;
         };
     }
@@ -998,6 +1369,18 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
             case "phase_resume" -> "阶段续跑";
             default -> code.startsWith("node_retry") ? "节点重试" : code;
         };
+    }
+
+    private List<String> normalizeStringList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return values.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private List<String> splitCsv(String raw) {
@@ -1037,6 +1420,77 @@ public class ArticleMemoryServiceImpl implements ArticleMemoryService {
 
     private String firstNonBlank(String candidate, String fallback) {
         return !isBlank(candidate) ? candidate : fallback;
+    }
+
+    private List<String> resolveMemoryImageMethods(ArticleTaskMemoryVO memory, Article article) {
+        if (memory != null && memory.getImageStrategy() != null
+                && memory.getImageStrategy().getMethods() != null
+                && !memory.getImageStrategy().getMethods().isEmpty()) {
+            return memory.getImageStrategy().getMethods().stream()
+                    .filter(Objects::nonNull)
+                    .filter(value -> !value.isBlank())
+                    .distinct()
+                    .collect(Collectors.toList());
+        }
+        if (article != null && !isBlank(article.getEnabledImageMethods())) {
+            List<String> methods = GsonUtils.fromJsonSafe(article.getEnabledImageMethods(),
+                    new TypeToken<List<String>>() {
+                    });
+            if (methods != null) {
+                return methods.stream()
+                        .filter(Objects::nonNull)
+                        .filter(value -> !value.isBlank())
+                        .distinct()
+                        .collect(Collectors.toList());
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    private Long resolveArticleUpdatedAt(Article article) {
+        if (article == null) {
+            return null;
+        }
+        if (article.getUpdateTime() != null) {
+            return article.getUpdateTime().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        }
+        if (article.getCompletedTime() != null) {
+            return article.getCompletedTime().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        }
+        return article.getCreateTime() == null ? null
+                : article.getCreateTime().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    private boolean containsIgnoreCase(String text, String keyword) {
+        if (isBlank(text) || isBlank(keyword)) {
+            return false;
+        }
+        return text.toLowerCase().contains(keyword.toLowerCase());
+    }
+
+    private boolean hasIntersect(List<String> left, List<String> right) {
+        if (left == null || right == null || left.isEmpty() || right.isEmpty()) {
+            return false;
+        }
+        Set<String> rightSet = right.stream()
+                .filter(Objects::nonNull)
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.toSet());
+        return left.stream()
+                .filter(Objects::nonNull)
+                .filter(value -> !value.isBlank())
+                .anyMatch(rightSet::contains);
+    }
+
+    private void addAllNonBlank(Set<String> target, List<String> values) {
+        if (target == null || values == null || values.isEmpty()) {
+            return;
+        }
+        for (String value : values) {
+            if (!isBlank(value)) {
+                target.add(value);
+            }
+        }
     }
 
     private String joinValues(List<String> values) {

@@ -94,52 +94,65 @@
               <span class="summary-label">已生成数量</span>
               <span class="summary-value">{{ memory.imageStrategy?.generatedCount ?? 0 }}</span>
             </div>
+            <div class="summary-card muted">
+              <span class="summary-label">降级次数</span>
+              <span class="summary-value">{{ memory.imageStrategy?.fallbackCount ?? 0 }}</span>
+            </div>
           </div>
           <div v-if="memory.imageStrategy?.decisionReason" class="summary-block">
             <div class="summary-block-title">路由原因</div>
             <div class="summary-text">{{ formatDecisionReason(memory.imageStrategy?.decisionReason) }}</div>
+          </div>
+          <div v-if="memory.imageStrategy?.fallbackSummary" class="summary-block">
+            <div class="summary-block-title">降级摘要</div>
+            <div class="summary-text">{{ formatFallbackSummary(memory.imageStrategy?.fallbackSummary) }}</div>
           </div>
         </div>
 
         <div class="memory-group">
           <div class="group-title">
             <CheckCircleOutlined />
-            <span>已沉淀结果</span>
+            <span>&#27491;&#25991;&#35780;&#23457;</span>
           </div>
-          <div class="kv-list">
-            <div class="kv-item">
-              <span class="kv-key">选定标题</span>
-              <span class="kv-value multiline">{{ selectedTitleText }}</span>
+          <div v-if="memory.contentReview" class="summary-grid summary-grid--strategy">
+            <div class="summary-card muted">
+              <span class="summary-label">&#26159;&#21542;&#24314;&#35758;&#20462;&#35746;</span>
+              <span class="summary-value">{{ getBooleanText(memory.contentReview?.needsRevision) }}</span>
+            </div>
+            <div class="summary-card muted">
+              <span class="summary-label">&#26159;&#21542;&#24050;&#24212;&#29992;&#20462;&#35746;</span>
+              <span class="summary-value">{{ getBooleanText(memory.contentReview?.revised) }}</span>
+            </div>
+            <div class="summary-card muted">
+              <span class="summary-label">&#38382;&#39064;&#25968;&#37327;</span>
+              <span class="summary-value">{{ memory.contentReview?.issueCount ?? 0 }}</span>
+            </div>
+            <div class="summary-card muted">
+              <span class="summary-label">&#35780;&#23457;&#20449;&#21495;</span>
+              <span class="summary-value">{{ formatReviewSignalList(memory.contentReview?.qualitySignals) }}</span>
             </div>
           </div>
-
-          <div class="summary-block">
-            <div class="summary-block-title">大纲摘要</div>
-            <div class="summary-text">{{ memory.outlineSummary?.text || '--' }}</div>
-            <div class="meta-line">
-              <span>来源：{{ memory.outlineSummary?.sourceType || '--' }}</span>
-              <span>章节数：{{ memory.outlineSummary?.sourceCount ?? 0 }}</span>
-            </div>
-            <div v-if="memory.outlineSummary?.highlights?.length" class="chip-list">
-              <a-tag v-for="item in memory.outlineSummary.highlights" :key="item" color="cyan">
-                {{ item }}
+          <div v-if="memory.contentReview?.summary" class="summary-block">
+            <div class="summary-block-title">&#35780;&#23457;&#25688;&#35201;</div>
+            <div class="summary-text">{{ memory.contentReview.summary }}</div>
+          </div>
+          <div v-if="memory.contentReview?.issues?.length" class="summary-block">
+            <div class="summary-block-title">&#21457;&#29616;&#38382;&#39064;</div>
+            <div class="chip-list">
+              <a-tag v-for="item in memory.contentReview.issues" :key="item" color="orange">
+                {{ formatReviewIssue(item) }}
               </a-tag>
             </div>
           </div>
-
-          <div class="summary-block">
-            <div class="summary-block-title">正文摘要</div>
-            <div class="summary-text">{{ memory.contentSummary?.text || '--' }}</div>
-            <div class="meta-line">
-              <span>来源：{{ memory.contentSummary?.sourceType || '--' }}</span>
-              <span>内容长度：{{ memory.contentSummary?.sourceCount ?? 0 }}</span>
-            </div>
-            <div v-if="memory.contentSummary?.highlights?.length" class="chip-list">
-              <a-tag v-for="item in memory.contentSummary.highlights" :key="item" color="geekblue">
-                {{ item }}
+          <div v-if="memory.contentReview?.qualitySignals?.length" class="summary-block">
+            <div class="summary-block-title">&#36136;&#37327;&#25913;&#36827;&#20449;&#21495;</div>
+            <div class="chip-list">
+              <a-tag v-for="item in memory.contentReview.qualitySignals" :key="item" color="green">
+                {{ formatReviewSignal(item) }}
               </a-tag>
             </div>
           </div>
+          <div v-else class="empty-text">&#26242;&#26080;&#27491;&#25991;&#35780;&#23457;&#32467;&#26524;</div>
         </div>
 
         <div class="memory-group">
@@ -348,6 +361,7 @@ const getNodeText = (node?: string) => {
     agent2_generate_outline: '大纲生成',
     ai_modify_outline: 'AI 修改大纲',
     agent3_generate_content: '正文生成',
+    agent3_review_content: '正文评审',
     image_strategy_router: '图片策略路由',
     agent4_analyze_image_requirements: '图片需求分析',
     agent5_generate_images: '图片生成',
@@ -363,12 +377,50 @@ const joinValues = (values?: string[]) => {
 
 const getNeedImagesText = (needImages?: boolean) => {
   if (needImages === true) {
-    return '需要'
+    return '\u9700\u8981'
   }
   if (needImages === false) {
-    return '不需要'
+    return '\u4e0d\u9700\u8981'
   }
   return '--'
+}
+
+const getBooleanText = (value?: boolean) => {
+  if (value === true) {
+    return '\u662f'
+  }
+  if (value === false) {
+    return '\u5426'
+  }
+  return '--'
+}
+
+const formatReviewSignal = (signal?: string) => {
+  const signalMap: Record<string, string> = {
+    content_reviewed: '\u5df2\u5b8c\u6210\u6b63\u6587\u8bc4\u5ba1',
+    content_revised: '\u5df2\u6267\u884c\u6700\u5c0f\u4fee\u8ba2',
+    duplicate_reduced: '\u91cd\u590d\u8868\u8fbe\u5df2\u6536\u655b',
+    ending_strengthened: '\u7ed3\u5c3e\u6536\u675f\u5df2\u589e\u5f3a',
+    outline_alignment_checked: '\u5927\u7eb2\u5bf9\u9f50\u5df2\u68c0\u67e5',
+  }
+  return signalMap[signal || ''] || signal || '--'
+}
+
+const formatReviewSignalList = (signals?: string[]) => {
+  return signals && signals.length > 0
+    ? signals.map(item => formatReviewSignal(item)).join(' / ')
+    : '--'
+}
+
+const formatReviewIssue = (issue?: string) => {
+  const issueMap: Record<string, string> = {
+    '\u91cd\u590d\u8868\u8ff0': '\u91cd\u590d\u8868\u8ff0',
+    '\u7ed3\u5c3e\u504f\u5f31': '\u7ed3\u5c3e\u504f\u5f31',
+    '\u504f\u79bb\u5927\u7eb2': '\u504f\u79bb\u5927\u7eb2',
+    '\u8fc7\u6e21\u4e0d\u8db3': '\u6bb5\u843d\u8fc7\u6e21\u4e0d\u8db3',
+    '\u7a7a\u6cdb\u63cf\u8ff0': '\u5185\u5bb9\u8f83\u7a7a\u6cdb',
+  }
+  return issueMap[issue || ''] || issue || '--'
 }
 
 const getDecisionSourceText = (source?: string) => {
@@ -398,6 +450,13 @@ const formatDecisionReason = (reason?: string) => {
     .split('|')
     .map(item => reasonMap[item] || item)
     .join('；')
+}
+
+const formatFallbackSummary = (summary?: string) => {
+  if (!summary) {
+    return '--'
+  }
+  return summary.replace(/,/g, '；')
 }
 
 const formatTimestamp = (value?: number) => {
