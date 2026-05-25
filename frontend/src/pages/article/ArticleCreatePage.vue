@@ -1,12 +1,12 @@
-<template>
+﻿<template>
   <div class="article-create-page">
     <!-- 三栏布局容器 -->
     <div class="create-layout">
-      <!-- 左侧：智能体流程可视化 -->
+      <!-- 左侧：创作流程 -->
       <aside class="sidebar-left">
         <div class="sidebar-header">
           <h3 class="sidebar-title">创作流程</h3>
-          <p class="sidebar-subtitle">智能体协作可视化</p>
+          <p class="sidebar-subtitle">智能体协作执行可视化</p>
         </div>
 
         <div class="flow-timeline">
@@ -39,31 +39,31 @@
 
       <!-- 中间：主内容区 -->
       <main ref="mainContentRef" class="main-content">
-        <!-- 阶段切换（带过渡动画） -->
+        <!-- 阶段切换 -->
         <Transition name="fade-slide" mode="out-in">
           <!-- 输入状态 -->
           <div v-if="currentPhase === 'INPUT'" key="input" class="input-state">
           <div class="input-card">
             <div class="input-header">
               <h1 class="input-title">创作新文章</h1>
-              <p class="input-subtitle">输入选题，AI 帮你生成爆款文章</p>
+              <p class="input-subtitle">输入选题，AI 帮您生成完整图文内容</p>
             </div>
 
             <div class="input-area">
               <a-textarea
                 v-model:value="topic"
-                placeholder="请输入您想创作的文章选题，例如：2026年AI如何改变职场"
+                placeholder="请输入您想创作的文章选题，例如：2026年 AI 如何改变职场"
                 :rows="6"
                 :maxlength="500"
                 show-count
                 class="topic-textarea"
               />
 
-              <!-- 文章风格选择 -->
+              <!-- 文章风格 -->
               <div class="style-section">
                 <div class="section-header">
                   <span class="section-title">文章风格</span>
-                  <span class="section-tip">（不选择使用默认风格）</span>
+                  <span class="section-tip">（不选择则使用默认风格）</span>
                 </div>
                 <a-radio-group v-model:value="selectedStyle" class="style-group">
                   <a-radio value="">默认</a-radio>
@@ -74,11 +74,11 @@
                 </a-radio-group>
               </div>
 
-              <!-- 配图方式选择 -->
+              <!-- 配图方式 -->
               <div class="image-methods-section">
                 <div class="section-header">
                   <span class="section-title">配图方式</span>
-                  <span class="section-tip">（不选择表示支持所有方式）</span>
+                  <span class="section-tip">（不选择表示允许系统自由选用）</span>
                 </div>
                 <a-checkbox-group v-model:value="selectedImageMethods" class="methods-group">
                   <a-checkbox value="PEXELS">Pexels</a-checkbox>
@@ -100,7 +100,7 @@
                 </a-checkbox-group>
                 <div v-if="!isVip" class="vip-notice">
                   <CrownOutlined />
-                  <span>AI 生图和 SVG 图表为 VIP 专属功能，</span>
+                  <span>AI 生图和 SVG 图表属于 VIP 专属能力</span>
                   <RouterLink to="/vip" class="upgrade-link">立即升级</RouterLink>
                 </div>
               </div>
@@ -120,7 +120,7 @@
               </a-button>
               <div v-if="!hasQuota" class="quota-warning">
                 <WarningOutlined />
-                <span>配额已用完，无法创建文章</span>
+                <span>创作额度已用完，当前无法继续创建文章</span>
               </div>
             </div>
           </div>
@@ -130,7 +130,7 @@
           <div v-else-if="currentPhase === 'TITLE_GENERATING'" key="title-generating" class="loading-stage">
             <a-spin size="large" />
             <h3>AI 正在生成标题方案...</h3>
-            <p>稍等片刻，即将为您呈现多个精彩标题</p>
+            <p>请稍候，即将为您提供多个可选标题</p>
           </div>
 
           <!-- 标题选择阶段 -->
@@ -142,7 +142,7 @@
             @confirm="handleConfirmTitle"
           />
 
-          <!-- 大纲生成中（流式展示） -->
+          <!-- 大纲生成中 -->
           <div v-else-if="currentPhase === 'OUTLINE_GENERATING'" key="outline-generating" class="outline-generating-state">
             <!-- 标题预览 -->
             <div v-if="article.mainTitle" class="preview-header">
@@ -150,7 +150,7 @@
               <p class="article-subtitle">{{ article.subTitle }}</p>
             </div>
 
-            <!-- 大纲流式展示 -->
+            <!-- 大纲流式预览 -->
             <div class="outline-preview">
               <div class="section-label">
                 <BulbOutlined />
@@ -194,7 +194,7 @@
             <p class="article-subtitle">{{ article.subTitle }}</p>
           </div>
 
-          <!-- 大纲预览（流式解析展示） -->
+          <!-- 大纲预览 -->
           <div v-if="outlineRaw" class="outline-preview">
             <div class="section-label">
               <BulbOutlined />
@@ -215,7 +215,7 @@
             </div>
           </div>
 
-          <!-- 正文预览（流式输出） -->
+          <!-- 正文预览 -->
           <div v-if="article.content" class="content-preview">
             <div v-html="markdownToHtml(article.content)" class="markdown-body"></div>
             <span v-if="isStreaming" class="typing-cursor">|</span>
@@ -242,7 +242,7 @@
           <div v-else-if="currentPhase === 'COMPLETED'" key="completed" class="completed-state">
           <div class="success-header">
             <CheckCircleFilled class="success-icon" />
-            <span>文章创作完成！</span>
+            <span>文章创作完成</span>
           </div>
 
           <div class="preview-header">
@@ -258,11 +258,11 @@
 
       <!-- 右侧：辅助面板 -->
       <aside class="sidebar-right">
-        <!-- 配额信息 -->
+        <!-- 创作额度 -->
         <div v-if="currentPhase === 'INPUT'" class="panel-section quota-section">
           <h4 class="panel-title">
             <CrownOutlined />
-            创作配额
+            创作额度
           </h4>
           <div v-if="isAdmin" class="quota-admin">
             <span class="quota-badge admin">管理员</span>
@@ -317,27 +317,27 @@
               <div class="tip-icon">1</div>
               <div class="tip-content">
                 <div class="tip-title">抓住痛点</div>
-                <div class="tip-desc">直击用户最关心的问题</div>
+                <div class="tip-desc">优先切中目标读者最在意的问题</div>
               </div>
             </div>
             <div class="tip-item">
               <div class="tip-icon">2</div>
               <div class="tip-content">
                 <div class="tip-title">制造悬念</div>
-                <div class="tip-desc">让读者产生好奇心</div>
+                <div class="tip-desc">通过反差、问题或结果引发继续阅读</div>
               </div>
             </div>
             <div class="tip-item">
               <div class="tip-icon">3</div>
               <div class="tip-content">
-                <div class="tip-title">数字吸引</div>
-                <div class="tip-desc">使用具体数据增加说服力</div>
+                <div class="tip-title">数据增强</div>
+                <div class="tip-desc">使用明确数字和案例增强说服力</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 创作进行中的提示（所有创作阶段） -->
+        <!-- 创作进度 -->
         <div v-if="isCreating || currentPhase === 'TITLE_SELECTING' || currentPhase === 'OUTLINE_EDITING'" class="panel-section">
           <h4 class="panel-title">
             <ClockCircleOutlined />
@@ -355,12 +355,194 @@
           </div>
           <div v-if="isCreating" class="progress-tip">
             <InfoCircleOutlined />
-            <span>AI 正在努力创作中，请耐心等待...</span>
+            <span>AI 正在执行当前阶段，请稍候...</span>
           </div>
           <div v-else class="progress-tip waiting">
             <InfoCircleOutlined />
             <span>等待您的确认...</span>
           </div>
+        </div>
+
+        <div
+          v-if="canResumeCurrentTask || errorVisible"
+          class="panel-section resume-section"
+        >
+          <h4 class="panel-title">
+            <RedoOutlined />
+            恢复执行
+          </h4>
+          <div class="resume-card">
+            <div class="resume-title">
+              {{ errorVisible ? '当前任务执行失败' : '检测到可恢复任务' }}
+            </div>
+            <div class="resume-desc">
+              <span>任务 ID：{{ taskId || lastFailedTaskId || '--' }}</span>
+              <span>阶段：{{ latestNodeLog?.phase ? getPhaseDisplayName(latestNodeLog.phase) : currentPhase }}</span>
+              <span>状态：{{ articleStatusText.label }}</span>
+            </div>
+            <a-button
+              type="primary"
+              block
+              :loading="confirmLoading"
+              @click="handleResumeTask"
+              class="resume-btn"
+            >
+              <RedoOutlined />
+              从当前阶段继续
+            </a-button>
+          </div>
+        </div>
+
+        <!-- 实时执行观测 -->
+        <div
+          v-if="currentPhase !== 'INPUT' && hasExecutionObservability"
+          class="panel-section observability-section"
+        >
+          <h4 class="panel-title">
+            <ThunderboltOutlined />
+            执行观测
+          </h4>
+
+          <div class="observability-summary">
+            <div class="summary-card">
+              <span class="summary-label">当前阶段</span>
+              <span class="summary-value">
+                {{ latestNodeLog?.phase ? getPhaseDisplayName(latestNodeLog.phase) : agentSteps[currentStep]?.title }}
+              </span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">节点数量</span>
+              <span class="summary-value">{{ executionStats?.nodeCount ?? 0 }}</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">节点平均耗时</span>
+              <span class="summary-value">{{ nodeAverageDuration }}ms</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">总耗时</span>
+              <span class="summary-value">{{ executionStats?.totalDurationMs ?? 0 }}ms</span>
+            </div>
+          </div>
+
+          <div v-if="recentNodeTimeline.length > 0" class="observability-group">
+            <div class="observability-group-header">
+              <span class="observability-group-title">节点时间线</span>
+              <span class="observability-group-subtitle">实时展示工作流节点执行进度、阶段切换与耗时</span>
+            </div>
+            <div class="mini-timeline">
+              <div
+                v-for="item in recentNodeTimeline"
+                :key="item.key"
+                :class="['mini-timeline-item', item.status.toLowerCase()]"
+              >
+                <div class="mini-timeline-indicator">
+                  <CheckCircleOutlined v-if="item.status === 'SUCCESS'" class="timeline-icon success" />
+                  <CloseCircleOutlined v-else-if="item.status === 'FAILED'" class="timeline-icon failed" />
+                  <InfoCircleOutlined v-else-if="item.status === 'INFO'" class="timeline-icon info" />
+                  <LoadingOutlined v-else class="timeline-icon running" />
+                </div>
+                <div class="mini-timeline-content">
+                  <div class="mini-timeline-header">
+                    <span class="mini-timeline-title">{{ item.title }}</span>
+                    <span class="mini-timeline-duration">{{ item.duration }}ms</span>
+                  </div>
+                  <div class="mini-timeline-meta">
+                    <span class="timeline-phase-tag">{{ item.phase }}</span>
+                    <span>{{ item.time }}</span>
+                  </div>
+                  <div v-if="hasTimelineConfig(item)" class="mini-timeline-config">
+                    <span v-if="item.model" class="config-chip">{{ item.model }}</span>
+                    <span v-if="item.promptKey" class="config-chip">
+                      {{ item.promptKey }}@{{ item.promptVersion || 'default' }}
+                    </span>
+                    <span
+                      v-if="item.temperature !== undefined && item.temperature !== null"
+                      class="config-chip"
+                    >
+                      Temp {{ formatConfigNumber(item.temperature) }}
+                    </span>
+                    <span v-if="item.maxTokens" class="config-chip">Max {{ item.maxTokens }}</span>
+                    <span v-if="item.topP !== undefined && item.topP !== null" class="config-chip">
+                      TopP {{ formatConfigNumber(item.topP) }}
+                    </span>
+                  </div>
+                  <div v-if="item.configSummary" class="mini-timeline-config-summary">
+                    {{ item.configSummary }}
+                  </div>
+                  <div v-if="item.message" class="mini-timeline-message">{{ item.message }}</div>
+                  <a-button
+                    v-if="item.status === 'FAILED' && item.node"
+                    size="small"
+                    type="link"
+                    class="retry-node-btn"
+                    :loading="confirmLoading"
+                    @click="handleRetryNode(item.node)"
+                  >
+                    重试该节点
+                  </a-button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="recentAgentTimeline.length > 0" class="observability-group">
+            <div class="observability-group-header">
+              <span class="observability-group-title">智能体时间线</span>
+              <span class="observability-group-subtitle">补充展示 LLM 与工具层调用记录</span>
+            </div>
+            <div class="mini-timeline compact">
+              <div
+                v-for="item in recentAgentTimeline"
+                :key="item.key"
+                :class="['mini-timeline-item', item.status.toLowerCase()]"
+              >
+                <div class="mini-timeline-indicator">
+                  <CheckCircleOutlined v-if="item.status === 'SUCCESS'" class="timeline-icon success" />
+                  <CloseCircleOutlined v-else-if="item.status === 'FAILED'" class="timeline-icon failed" />
+                  <LoadingOutlined v-else class="timeline-icon running" />
+                </div>
+                <div class="mini-timeline-content">
+                  <div class="mini-timeline-header">
+                    <span class="mini-timeline-title">{{ item.title }}</span>
+                    <span class="mini-timeline-duration">{{ item.duration }}ms</span>
+                  </div>
+                  <div class="mini-timeline-meta">
+                    <span>{{ getStatusText(item.status) }}</span>
+                    <span>{{ item.time }}</span>
+                  </div>
+                  <div v-if="item.message" class="mini-timeline-message error">{{ item.message }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="taskId && currentPhase !== 'INPUT'"
+          class="panel-section memory-section"
+        >
+          <NodeReplayPanel
+            :task-id="taskId"
+            title="节点调试面板"
+            subtitle="实时查看节点输入输出快照、模型参数、错误信息与可回放状态"
+            :auto-refresh="isCreating || articleStatusText.raw === 'FAILED'"
+            :refresh-interval="2500"
+            :show-retry-action="true"
+            @retry-node="handleRetryNode"
+          />
+        </div>
+
+        <div
+          v-if="taskId && currentPhase !== 'INPUT'"
+          class="panel-section memory-section"
+        >
+          <TaskMemoryPanel
+            :task-id="taskId"
+            title="任务记忆面板"
+            subtitle="实时查看当前任务沉淀的上下文、摘要、动作与失败线索"
+            :auto-refresh="isCreating || articleStatusText.raw === 'FAILED'"
+            :refresh-interval="2500"
+          />
         </div>
 
         <!-- 实时执行日志 -->
@@ -381,7 +563,7 @@
           </div>
         </div>
 
-        <!-- 当前选题提示 -->
+        <!-- 当前选题 -->
         <div v-if="currentPhase !== 'INPUT' && currentPhase !== 'COMPLETED' && topic" class="panel-section">
           <h4 class="panel-title">
             <BulbOutlined />
@@ -400,9 +582,9 @@
           </h4>
           <div class="tips-list">
             <div class="tip-item">
-              <div class="tip-icon">💡</div>
+              <div class="tip-icon">1</div>
               <div class="tip-content">
-                <div class="tip-desc">AI 正在分析您的选题，生成多个吸引眼球的标题方案</div>
+                <div class="tip-desc">AI 正在分析您的选题，并生成多组可选标题方案</div>
               </div>
             </div>
           </div>
@@ -415,9 +597,9 @@
           </h4>
           <div class="tips-list">
             <div class="tip-item">
-              <div class="tip-icon">✅</div>
+              <div class="tip-icon">2</div>
               <div class="tip-content">
-                <div class="tip-desc">选择最符合您期望的标题，或添加补充描述让 AI 更好地理解您的需求</div>
+                <div class="tip-desc">请选择最符合预期的标题，也可以补充要求帮助 AI 继续优化</div>
               </div>
             </div>
           </div>
@@ -430,9 +612,9 @@
           </h4>
           <div class="tips-list">
             <div class="tip-item">
-              <div class="tip-icon">📝</div>
+              <div class="tip-icon">3</div>
               <div class="tip-content">
-                <div class="tip-desc">AI 正在为您规划文章结构，构建清晰的章节脉络</div>
+                <div class="tip-desc">AI 正在规划文章结构，构建清晰的大纲和章节脉络</div>
               </div>
             </div>
           </div>
@@ -448,27 +630,27 @@
               <div class="tip-icon">1</div>
               <div class="tip-content">
                 <div class="tip-title">拖动排序</div>
-                <div class="tip-desc">点击章节左侧拖动图标可调整章节顺序</div>
+                <div class="tip-desc">可调整章节顺序，让文章结构更符合您的表达逻辑</div>
               </div>
             </div>
             <div class="tip-item">
               <div class="tip-icon">2</div>
               <div class="tip-content">
                 <div class="tip-title">AI 助手</div>
-                <div class="tip-desc">使用 AI 助手快速修改大纲结构</div>
+                <div class="tip-desc">使用 AI 助手快速调整大纲结构和表述重点</div>
               </div>
             </div>
             <div class="tip-item">
               <div class="tip-icon">3</div>
               <div class="tip-content">
-                <div class="tip-title">添加章节</div>
-                <div class="tip-desc">根据需要添加或删除章节和要点</div>
+                <div class="tip-title">增删章节</div>
+                <div class="tip-desc">根据需要补充、删除或细化章节与要点</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 操作按钮 -->
+        <!-- 快捷操作 -->
         <div v-if="currentPhase === 'COMPLETED'" class="panel-section">
           <h4 class="panel-title">
             <ThunderboltOutlined />
@@ -490,7 +672,7 @@
           </div>
         </div>
 
-        <!-- 完成后的统计 -->
+        <!-- 文章统计 -->
         <div v-if="currentPhase === 'COMPLETED'" class="panel-section stats-section">
           <h4 class="panel-title">
             <BarChartOutlined />
@@ -508,7 +690,7 @@
           </div>
         </div>
 
-        <!-- 底部帮助链接 -->
+        <!-- 底部帮助入口 -->
         <div class="panel-footer">
           <a class="help-link">
             <QuestionCircleOutlined />
@@ -534,8 +716,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeUnmount, onMounted, nextTick, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import {
@@ -557,52 +739,107 @@ import {
   PictureOutlined,
   WarningOutlined,
   CrownOutlined,
-  FileTextOutlined
+  FileTextOutlined,
 } from '@ant-design/icons-vue'
-import { createArticle, confirmTitle, confirmOutline } from '@/api/articleController'
-import { connectSSE, closeSSE, type SSEMessage } from '@/utils/sse'
-import { isAdmin as checkIsAdmin, isVip as checkIsVip, hasQuota as checkHasQuota } from '@/utils/permission'
+import {
+  createArticle,
+  confirmTitle,
+  confirmOutline,
+  getTaskSnapshot,
+  getUserCreationPreference,
+  getExecutionLogs,
+  resumeTask,
+  retryNode,
+} from '@/api/articleController'
+import { closeSSE, connectSSE, type SSEMessage } from '@/utils/sse'
+import {
+  isAdmin as checkIsAdmin,
+  isVip as checkIsVip,
+  hasQuota as checkHasQuota,
+} from '@/utils/permission'
 import { marked } from 'marked'
 import TitleSelectingStage from './components/TitleSelectingStage.vue'
 import OutlineEditingStage from './components/OutlineEditingStage.vue'
+import NodeReplayPanel from './components/NodeReplayPanel.vue'
+import TaskMemoryPanel from './components/TaskMemoryPanel.vue'
+
+type UiPhase =
+  | 'INPUT'
+  | 'TITLE_GENERATING'
+  | 'TITLE_SELECTING'
+  | 'OUTLINE_GENERATING'
+  | 'OUTLINE_EDITING'
+  | 'CONTENT_GENERATING'
+  | 'COMPLETED'
+
+interface RealtimeLog {
+  timestamp: number
+  level: string
+  message: string
+}
+
+interface TimelineLogViewModel {
+  key: string
+  title: string
+  status: string
+  duration: number
+  time: string
+  node?: string
+  phase?: string
+  message?: string
+  promptKey?: string
+  promptVersion?: string
+  model?: string
+  temperature?: number
+  maxTokens?: number
+  topP?: number
+  configSummary?: string
+}
+
+interface OutlineItem {
+  section: number
+  title: string
+  points: string[]
+}
+
+interface TitleOptionViewModel {
+  mainTitle: string
+  subTitle: string
+}
+
+const TASK_STORAGE_KEY = 'article-create:active-task-id'
 
 const router = useRouter()
 const route = useRoute()
 const loginUserStore = useLoginUserStore()
 
-// 配额相关计算属性
 const isAdmin = computed(() => checkIsAdmin(loginUserStore.loginUser))
 const isVip = computed(() => checkIsVip(loginUserStore.loginUser))
 const quota = computed(() => loginUserStore.loginUser.quota ?? 0)
 const hasQuota = computed(() => checkHasQuota(loginUserStore.loginUser))
 
-// 智能体步骤（对应后端 6 个步骤）
 const agentSteps = [
-  { title: '生成标题', description: 'AI 分析选题，生成吸睛标题' },
-  { title: '规划大纲', description: '构建文章结构，理清脉络' },
-  { title: '撰写正文', description: '流式生成高质量文章内容' },
-  { title: '分析配图', description: '智能分析配图需求和位置' },
-  { title: '生成配图', description: '自动匹配高清无版权图片' },
-  { title: '图文合成', description: '将配图插入正文，完美呈现' },
+  { title: '标题生成', description: '分析选题并产出多组标题方案' },
+  { title: '标题确认', description: '选择标题并补充创作要求' },
+  { title: '大纲生成', description: '规划文章结构和章节要点' },
+  { title: '正文创作', description: '流式生成正文内容' },
+  { title: '配图生成', description: '生成并匹配文章配图' },
+  { title: '图文合成', description: '合并正文与配图输出最终结果' },
 ]
 
-// 示例选题
 const exampleTopics = [
-  '2026年AI如何改变职场',
-  '程序员如何提升竞争力',
-  '远程办公的利与弊',
-  '如何培养深度思考',
-  '新能源汽车趋势',
-  '健康饮食指南',
+  '2026 年 AI 如何重塑职场',
+  '开发者如何提升个人竞争力',
+  '远程办公的利与弊分析',
+  '个人品牌为什么越来越重要',
+  '如何写一份让人愿意转发的行业观察',
+  '中小团队如何落地 AI 工作流',
 ]
 
-// 阶段状态
-const currentPhase = ref<string>('INPUT')  // INPUT, TITLE_SELECTING, OUTLINE_EDITING, CONTENT_GENERATING, COMPLETED
-
-// 状态
+const currentPhase = ref<UiPhase>('INPUT')
 const topic = ref('')
-const selectedStyle = ref('')  // 选中的文章风格（空字符串表示默认）
-const selectedImageMethods = ref<string[]>([])  // 选中的配图方式（空数组表示全部）
+const selectedStyle = ref('')
+const selectedImageMethods = ref<string[]>([])
 const isCreating = ref(false)
 const isCompleted = ref(false)
 const isStreaming = ref(false)
@@ -611,83 +848,17 @@ const currentStep = ref(0)
 const taskId = ref('')
 const errorVisible = ref(false)
 const errorMessage = ref('')
+const lastFailedTaskId = ref('')
 const confirmLoading = ref(false)
-
-// 实时日志
-interface RealtimeLog {
-  timestamp: number
-  level: string
-  message: string
-}
 const realtimeLogs = ref<RealtimeLog[]>([])
-
-// 标题方案
-const titleOptions = ref<Array<{mainTitle: string, subTitle: string}>>([])
-
-// 大纲数据
-const outline = ref<Array<{section: number, title: string, points: string[]}>>([])
-
-// 大纲数据（流式）
+const executionStats = ref<API.AgentExecutionStats | null>(null)
+const titleOptions = ref<TitleOptionViewModel[]>([])
+const outline = ref<API.OutlineSection[]>([])
 const outlineRaw = ref('')
-
-// 大纲项类型
-interface OutlineItem {
-  title: string
-  points: string[]
-  section: number
-}
-
-// 解析大纲 JSON（格式为 { "sections": [...] }）
-const parsedOutline = computed<OutlineItem[]>(() => {
-  if (!outlineRaw.value) return []
-
-  const str = outlineRaw.value.trim()
-
-  // 尝试解析完整的 JSON
-  try {
-    const parsed = JSON.parse(str)
-    if (parsed && Array.isArray(parsed.sections)) {
-      return parsed.sections
-    }
-    return []
-  } catch {
-    // JSON 不完整时，尝试解析已完成的部分
-    try {
-      // 找到最后一个完整的 section 对象 }
-      // 格式: { "sections": [ {...}, {...} ] }
-      const sectionsMatch = str.match(/"sections"\s*:\s*\[/)
-      if (!sectionsMatch) return []
-
-      const sectionsStart = str.indexOf('[', sectionsMatch.index)
-      if (sectionsStart === -1) return []
-
-      // 从 sections 数组开始，找到最后一个完整的 }
-      const afterStart = str.substring(sectionsStart)
-      const lastBrace = afterStart.lastIndexOf('}')
-
-      if (lastBrace > 0) {
-        const partialArray = afterStart.substring(0, lastBrace + 1) + ']'
-        const parsed = JSON.parse(partialArray)
-        if (Array.isArray(parsed)) {
-          return parsed
-        }
-      }
-      return []
-    } catch {
-      return []
-    }
-  }
-})
-
-// 内容区域引用（用于自动滚动）
 const mainContentRef = ref<HTMLElement | null>(null)
-
-// 配图进度
 const imageCount = ref(0)
 const totalImages = ref(5)
 const imageProgress = ref(0)
-
-// 文章数据
 const article = ref<Partial<API.ArticleVO>>({
   mainTitle: '',
   subTitle: '',
@@ -696,14 +867,137 @@ const article = ref<Partial<API.ArticleVO>>({
   images: [],
 })
 
-let eventSource: EventSource | null = null
+const parsedOutline = computed<OutlineItem[]>(() => {
+  if (!outlineRaw.value) {
+    return []
+  }
 
-// Markdown 转 HTML
-const markdownToHtml = (markdown: string | undefined) => {
-  return marked(markdown || '')
+  const raw = outlineRaw.value.trim()
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && Array.isArray(parsed.sections)) {
+      return parsed.sections
+    }
+  } catch {
+    try {
+      const sectionsMatch = raw.match(/"sections"\s*:\s*\[/)
+      if (!sectionsMatch) {
+        return []
+      }
+      const sectionsStart = raw.indexOf('[', sectionsMatch.index)
+      if (sectionsStart < 0) {
+        return []
+      }
+      const afterStart = raw.substring(sectionsStart)
+      const lastBrace = afterStart.lastIndexOf('}')
+      if (lastBrace < 0) {
+        return []
+      }
+      const partialArray = `${afterStart.substring(0, lastBrace + 1)}]`
+      const parsed = JSON.parse(partialArray)
+      if (Array.isArray(parsed)) {
+        return parsed
+      }
+    } catch {
+      return []
+    }
+  }
+  return []
+})
+
+let eventSource: EventSource | null = null
+let executionStatsTimer: ReturnType<typeof setInterval> | null = null
+
+const hasExecutionObservability = computed(() => {
+  return !!(
+    executionStats.value &&
+    ((executionStats.value.logs && executionStats.value.logs.length > 0) ||
+      (executionStats.value.nodeLogs && executionStats.value.nodeLogs.length > 0))
+  )
+})
+
+const agentLogs = computed(() => {
+  const logs = executionStats.value?.logs ?? []
+  return [...logs].sort(
+    (a, b) => new Date(a.startTime || 0).getTime() - new Date(b.startTime || 0).getTime(),
+  )
+})
+
+const nodeLogs = computed(() => {
+  const logs = executionStats.value?.nodeLogs ?? []
+  return [...logs].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+})
+
+const latestNodeLog = computed(() => {
+  return nodeLogs.value.length > 0 ? nodeLogs.value[nodeLogs.value.length - 1] : null
+})
+
+const nodeAverageDuration = computed(() => {
+  const durationValues = Object.values(executionStats.value?.nodeDurations ?? {})
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0)
+
+  if (durationValues.length > 0) {
+    return Math.round(
+      durationValues.reduce((sum, value) => sum + value, 0) / durationValues.length,
+    )
+  }
+
+  const elapsedValues = nodeLogs.value
+    .map((log) => Number(log.elapsedMs ?? 0))
+    .filter((value) => Number.isFinite(value) && value > 0)
+
+  return elapsedValues.length > 0
+    ? Math.round(elapsedValues.reduce((sum, value) => sum + value, 0) / elapsedValues.length)
+    : 0
+})
+
+const recentNodeTimeline = computed<TimelineLogViewModel[]>(() => {
+  return [...nodeLogs.value]
+    .slice(-8)
+    .reverse()
+    .map((log, index) => ({
+      key: `${log.node || 'node'}-${log.timestamp || index}`,
+      title: getNodeDisplayName(log.node || ''),
+      status: log.status || 'PENDING',
+      duration: log.elapsedMs ?? 0,
+      time: log.timestamp ? formatLogTime(log.timestamp) : '--',
+      node: log.node || '',
+      phase: getPhaseDisplayName(log.phase || ''),
+      message: log.message || '',
+      promptKey: log.promptKey,
+      promptVersion: log.promptVersion,
+      model: log.model,
+      temperature: log.temperature,
+      maxTokens: log.maxTokens,
+      topP: log.topP,
+      configSummary: buildNodeConfigSummary(log),
+    }))
+})
+
+const recentAgentTimeline = computed<TimelineLogViewModel[]>(() => {
+  return [...agentLogs.value]
+    .slice(-4)
+    .reverse()
+    .map((log, index) => ({
+      key: `${log.id || log.agentName || 'agent'}-${index}`,
+      title: getAgentDisplayName(log.agentName || ''),
+      status: log.status || 'PENDING',
+      duration: log.durationMs ?? 0,
+      time: formatDateTime(log.startTime),
+      message: log.errorMessage || '',
+    }))
+})
+
+const markdownToHtml = (markdown: string | undefined) => marked.parse(markdown || '') as string
+
+const formatDateTime = (value?: string) => {
+  if (!value) {
+    return '--'
+  }
+  return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
-// 自动滚动到底部
 const scrollToBottom = () => {
   nextTick(() => {
     if (mainContentRef.value) {
@@ -712,194 +1006,636 @@ const scrollToBottom = () => {
   })
 }
 
-// 开始创作
-const startCreate = async () => {
-  if (!topic.value.trim()) {
-    message.warning('请输入选题')
+const defaultArticle = (): Partial<API.ArticleVO> => ({
+  mainTitle: '',
+  subTitle: '',
+  content: '',
+  fullContent: '',
+  images: [],
+})
+
+const payloadOf = (msg: SSEMessage) => msg.payload ?? {}
+
+const normalizeTitleOptions = (items?: API.TitleOption[]) =>
+  (items || []).map((item) => ({
+    mainTitle: item.mainTitle || '',
+    subTitle: item.subTitle || '',
+  }))
+
+const getStoredTaskId = () => {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+  return window.localStorage.getItem(TASK_STORAGE_KEY) || ''
+}
+
+const persistTaskId = (value: string) => {
+  if (typeof window === 'undefined') {
     return
   }
+  window.localStorage.setItem(TASK_STORAGE_KEY, value)
+}
 
-  if (!hasQuota.value) {
-    message.error('配额不足，无法创建文章')
+const clearPersistedTaskId = () => {
+  if (typeof window === 'undefined') {
     return
   }
+  window.localStorage.removeItem(TASK_STORAGE_KEY)
+}
 
-  isCreating.value = true
-  currentStep.value = 0
-  realtimeLogs.value = []
-  addLog('开始创建文章任务...', 'info')
+const applyUserPreference = (preference?: API.UserCreationPreferenceVO) => {
+  if (!preference) {
+    return
+  }
+  if (!selectedStyle.value && preference.preferredStyle) {
+    selectedStyle.value = preference.preferredStyle
+  }
+  if (selectedImageMethods.value.length === 0 && preference.preferredImageMethods?.length) {
+    selectedImageMethods.value = [...preference.preferredImageMethods]
+  }
+}
+
+const syncRouteTaskId = async (value?: string) => {
+  const nextQuery = { ...route.query }
+  if (value) {
+    nextQuery.taskId = value
+  } else {
+    delete nextQuery.taskId
+  }
+  await router.replace({ query: nextQuery })
+}
+
+const rememberTask = async (value: string) => {
+  taskId.value = value
+  persistTaskId(value)
+  await syncRouteTaskId(value)
+}
+
+const forgetTask = async () => {
+  clearPersistedTaskId()
+  await syncRouteTaskId(undefined)
+}
+
+const closeCurrentConnection = () => {
+  closeSSE(eventSource)
+  eventSource = null
+}
+
+const stopExecutionStatsPolling = () => {
+  if (executionStatsTimer !== null) {
+    clearInterval(executionStatsTimer)
+    executionStatsTimer = null
+  }
+}
+
+const clearActiveTaskSession = async () => {
+  closeCurrentConnection()
+  resetRuntimeState()
+  taskId.value = ''
+  await forgetTask()
+}
+
+const loadExecutionStats = async (activeTaskId: string, silent = true) => {
+  if (!activeTaskId) {
+    return
+  }
 
   try {
-    // 创建任务
+    const res = await getExecutionLogs({ taskId: activeTaskId })
+    executionStats.value = res.data.data || null
+  } catch (error) {
+    if (!silent) {
+      console.error('Failed to load execution stats:', error)
+    }
+  }
+}
+
+const startExecutionStatsPolling = (activeTaskId: string) => {
+  if (!activeTaskId) {
+    return
+  }
+
+  stopExecutionStatsPolling()
+  void loadExecutionStats(activeTaskId)
+  executionStatsTimer = setInterval(() => {
+    void loadExecutionStats(activeTaskId)
+  }, 2000)
+}
+
+const resetRuntimeState = () => {
+  stopExecutionStatsPolling()
+  isCreating.value = false
+  isCompleted.value = false
+  isStreaming.value = false
+  isOutlineStreaming.value = false
+  currentStep.value = 0
+  errorVisible.value = false
+  errorMessage.value = ''
+  lastFailedTaskId.value = ''
+  confirmLoading.value = false
+  titleOptions.value = []
+  outline.value = []
+  outlineRaw.value = ''
+  realtimeLogs.value = []
+  executionStats.value = null
+  imageCount.value = 0
+  totalImages.value = 5
+  imageProgress.value = 0
+  article.value = defaultArticle()
+}
+
+const resetCreate = async () => {
+  await clearActiveTaskSession()
+  currentPhase.value = 'INPUT'
+  topic.value = ''
+  selectedStyle.value = ''
+  selectedImageMethods.value = []
+}
+
+const setUiByPhase = (phase?: string, status?: string, progress?: number) => {
+  isCompleted.value = status === 'COMPLETED'
+
+  if (status === 'COMPLETED') {
+    currentPhase.value = 'COMPLETED'
+    currentStep.value = 6
+    isCreating.value = false
+    isStreaming.value = false
+    isOutlineStreaming.value = false
+    return
+  }
+
+  switch (phase) {
+    case 'TITLE_GENERATING':
+      currentPhase.value = 'TITLE_GENERATING'
+      currentStep.value = 0
+      isCreating.value = true
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      break
+    case 'TITLE_SELECTING':
+      currentPhase.value = 'TITLE_SELECTING'
+      currentStep.value = 1
+      isCreating.value = false
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      break
+    case 'OUTLINE_GENERATING':
+      currentPhase.value = 'OUTLINE_GENERATING'
+      currentStep.value = 1
+      isCreating.value = true
+      isStreaming.value = false
+      isOutlineStreaming.value = true
+      break
+    case 'OUTLINE_EDITING':
+      currentPhase.value = 'OUTLINE_EDITING'
+      currentStep.value = 1
+      isCreating.value = false
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      break
+    case 'CONTENT_GENERATING': {
+      currentPhase.value = 'CONTENT_GENERATING'
+      const resolvedProgress = progress ?? 3
+      currentStep.value = resolvedProgress >= 6 ? 5 : Math.max(2, resolvedProgress - 1)
+      isCreating.value = true
+      isStreaming.value = resolvedProgress <= 3
+      isOutlineStreaming.value = false
+      break
+    }
+    default:
+      currentPhase.value = 'INPUT'
+      currentStep.value = 0
+      isCreating.value = false
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      break
+  }
+}
+
+const applySnapshot = (snapshot: API.ArticleTaskSnapshotVO) => {
+  topic.value = snapshot.topic || topic.value
+  selectedStyle.value = snapshot.style || ''
+  titleOptions.value = normalizeTitleOptions(snapshot.titleOptions)
+  outline.value = snapshot.outline || []
+  outlineRaw.value = snapshot.outlineRaw || (snapshot.outline ? JSON.stringify({ sections: snapshot.outline }) : '')
+  article.value = {
+    ...article.value,
+    mainTitle: snapshot.title?.mainTitle || article.value.mainTitle || '',
+    subTitle: snapshot.title?.subTitle || article.value.subTitle || '',
+    content: snapshot.content || '',
+    fullContent: snapshot.fullContent || '',
+    images: snapshot.images || [],
+  }
+
+  const requirementCount = snapshot.imageRequirements?.length || 0
+  const generatedCount = snapshot.images?.length || 0
+  if (requirementCount > 0) {
+    totalImages.value = requirementCount
+  } else if (generatedCount > 0) {
+    totalImages.value = generatedCount
+  }
+  imageCount.value = generatedCount
+  imageProgress.value = totalImages.value > 0
+    ? Math.min(100, Math.round((generatedCount / totalImages.value) * 100))
+    : 0
+
+  errorMessage.value = snapshot.errorMessage || ''
+  errorVisible.value = snapshot.status === 'FAILED' && !!snapshot.errorMessage
+  setUiByPhase(snapshot.phase, snapshot.status, snapshot.progress)
+}
+
+const shouldReconnectStream = (snapshot: API.ArticleTaskSnapshotVO) => {
+  if (snapshot.status !== 'PROCESSING') {
+    return false
+  }
+  return ['TITLE_GENERATING', 'OUTLINE_GENERATING', 'CONTENT_GENERATING'].includes(snapshot.phase || '')
+}
+
+const isTaskSnapshotMissing = (error: unknown) => {
+  const code = (error as { response?: { data?: { code?: number } } })?.response?.data?.code
+  return code === 40400
+}
+
+const restoreTask = async (restoreTaskId: string, silent = false) => {
+  if (!restoreTaskId) {
+    return
+  }
+
+  try {
+    closeCurrentConnection()
+    stopExecutionStatsPolling()
+    const res = await getTaskSnapshot({ taskId: restoreTaskId })
+    const snapshot = res.data.data
+    if (!snapshot) {
+      await clearActiveTaskSession()
+      addLog(`已清理失效任务引用：${restoreTaskId}`, 'warning')
+      return
+    }
+
+    await rememberTask(restoreTaskId)
+    applySnapshot(snapshot)
+    await loadExecutionStats(restoreTaskId)
+    if (!['COMPLETED', 'FAILED'].includes(snapshot.status || '')) {
+      startExecutionStatsPolling(restoreTaskId)
+    }
+    lastFailedTaskId.value = snapshot.status === 'FAILED' ? restoreTaskId : ''
+    addLog(`已恢复任务：${restoreTaskId}`, 'info')
+
+    if (shouldReconnectStream(snapshot)) {
+      connectToTaskStream(restoreTaskId, true)
+    }
+
+    if (!silent) {
+      message.success('任务已恢复')
+    }
+  } catch (error) {
+    console.error('Failed to restore task:', error)
+    await clearActiveTaskSession()
+    if (isTaskSnapshotMissing(error)) {
+      addLog(`已移除过期任务：${restoreTaskId}`, 'warning')
+    }
+    if (!silent) {
+      message.error(
+        isTaskSnapshotMissing(error)
+          ? '未找到可恢复的任务快照'
+          : '恢复任务失败，请稍后重试',
+      )
+    }
+  }
+}
+
+const connectToTaskStream = (activeTaskId: string, silent = false) => {
+  closeCurrentConnection()
+  eventSource = connectSSE(activeTaskId, {
+    onMessage: handleSSEMessage,
+    onError: handleSSEError,
+    onComplete: handleSSEComplete,
+  })
+  if (!silent) {
+    addLog('已连接任务流', 'info')
+  }
+}
+
+const startCreate = async () => {
+  if (!topic.value.trim()) {
+    message.warning('请输入文章选题')
+    return
+  }
+  if (!hasQuota.value) {
+    message.error('当前额度不足，请先升级或稍后再试')
+    return
+  }
+
+  await clearActiveTaskSession()
+  currentPhase.value = 'TITLE_GENERATING'
+  isCreating.value = true
+  addLog('正在创建文章任务...', 'info')
+
+  try {
     const res = await createArticle({
       topic: topic.value,
       style: selectedStyle.value || undefined,
-      enabledImageMethods: selectedImageMethods.value.length > 0 ? selectedImageMethods.value : undefined
+      enabledImageMethods:
+        selectedImageMethods.value.length > 0 ? selectedImageMethods.value : undefined,
     })
     const newTaskId = res.data.data
     if (!newTaskId) {
-      throw new Error('创建任务失败：未返回任务ID')
+      throw new Error('创建任务失败：未返回任务 ID')
     }
-    taskId.value = newTaskId
-    addLog(`任务创建成功，ID: ${newTaskId}`, 'success')
 
-    // 刷新用户信息（更新配额）
+    await rememberTask(newTaskId)
+    startExecutionStatsPolling(newTaskId)
+    addLog(`任务已创建：${newTaskId}`, 'success')
     await loginUserStore.fetchLoginUser()
-
-    // 建立 SSE 连接
-    addLog('已建立实时连接，开始生成...', 'info')
-    eventSource = connectSSE(taskId.value, {
-      onMessage: handleSSEMessage,
-      onError: handleSSEError,
-      onComplete: handleSSEComplete,
-    })
+    connectToTaskStream(newTaskId)
   } catch (error) {
     const err = error as Error
     message.error(err.message || '创建任务失败')
     isCreating.value = false
+    currentPhase.value = 'INPUT'
   }
 }
 
-// 添加日志
-const addLog = (message: string, level: string = 'info') => {
+const addLog = (logMessage: string, level: string = 'info') => {
   realtimeLogs.value.push({
     timestamp: Date.now(),
     level,
-    message
+    message: logMessage,
   })
-  // 限制日志数量，最多保留 50 条
   if (realtimeLogs.value.length > 50) {
     realtimeLogs.value.shift()
   }
 }
 
-// 格式化日志时间
 const formatLogTime = (timestamp: number) => {
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour12: false })
 }
 
-// 处理 SSE 消息
-const handleSSEMessage = (msg: SSEMessage) => {
-  console.log('SSE消息:', msg)
+const formatConfigNumber = (value?: number | null) => {
+  if (value === undefined || value === null || Number.isNaN(Number(value))) {
+    return '--'
+  }
+  return Number(value).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
+}
+
+const hasTimelineConfig = (item: TimelineLogViewModel) => {
+  return !!(
+    item.model ||
+    item.promptKey ||
+    item.temperature !== undefined ||
+    item.maxTokens !== undefined ||
+    item.topP !== undefined
+  )
+}
+
+const buildNodeConfigSummary = (log: API.NodeExecutionLogVO) => {
+  const parts: string[] = []
+  if (log.promptKey) {
+    parts.push(`Prompt: ${log.promptKey}@${log.promptVersion || 'default'}`)
+  }
+  if (log.model) {
+    parts.push(`模型: ${log.model}`)
+  }
+  if (log.temperature !== undefined && log.temperature !== null) {
+    parts.push(`Temperature: ${formatConfigNumber(log.temperature)}`)
+  }
+  if (log.maxTokens) {
+    parts.push(`MaxTokens: ${log.maxTokens}`)
+  }
+  if (log.topP !== undefined && log.topP !== null) {
+    parts.push(`TopP: ${formatConfigNumber(log.topP)}`)
+  }
+  return parts.join(' · ')
+}
+
+const canResumeCurrentTask = computed(() => {
+  if (!taskId.value || isCreating.value || isCompleted.value) {
+    return false
+  }
+  if (['INPUT', 'TITLE_SELECTING', 'OUTLINE_EDITING', 'COMPLETED'].includes(currentPhase.value)) {
+    return false
+  }
+  return ['FAILED', 'PROCESSING', 'PENDING'].includes(articleStatusText.value.raw)
+})
+
+const articleStatusText = computed(() => {
+  const snapshotStatus = executionStats.value?.overallStatus || ''
+  const fallbackStatus = errorVisible.value ? 'FAILED' : isCompleted.value ? 'COMPLETED' : isCreating.value ? 'PROCESSING' : ''
+  const raw = snapshotStatus || fallbackStatus
+  return {
+    raw,
+    label: getStatusText(raw),
+  }
+})
+
+const getStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    PENDING: '等待中',
+    PROCESSING: '处理中',
+    COMPLETED: '已完成',
+    FAILED: '失败',
+    SUCCESS: '成功',
+    RUNNING: '执行中',
+    INFO: '提示',
+    NOT_FOUND: '暂无数据',
+  }
+  return statusMap[status] || status
+}
+
+const getNodeDisplayName = (node: string) => {
+  const nodeMap: Record<string, string> = {
+    workflow_phase_1: '工作流阶段一',
+    workflow_phase_2: '工作流阶段二',
+    workflow_phase_3: '工作流阶段三',
+    workflow_error: '工作流异常',
+    agent1_generate_titles: '生成标题',
+    agent2_generate_outline: '生成大纲',
+    agent3_generate_content: '生成正文',
+    agent3_review_content: '正文评审',
+    agent4_analyze_image_requirements: '分析配图需求',
+    agent5_generate_images: '生成配图',
+    agent6_merge_content: '图文合成',
+    ai_modify_outline: 'AI 修改大纲',
+  }
+  return nodeMap[node] || node || '--'
+}
+
+const getPhaseDisplayName = (phase: string) => {
+  const phaseMap: Record<string, string> = {
+    TITLE_GENERATING: '标题生成',
+    TITLE_SELECTING: '标题确认',
+    OUTLINE_GENERATING: '大纲生成',
+    OUTLINE_EDITING: '大纲编辑',
+    CONTENT_GENERATING: '正文生成',
+    PENDING: '等待中',
+  }
+  return phaseMap[phase] || phase || '未知阶段'
+}
+
+const getAgentDisplayName = (agentName: string) => {
+  const agentMap: Record<string, string> = {
+    agent1_generate_titles: '生成标题',
+    agent2_generate_outline: '生成大纲',
+    agent3_generate_content: '生成正文',
+    agent3_review_content: '正文评审',
+    agent4_analyze_image_requirements: '分析配图需求',
+    agent5_generate_images: '生成配图',
+    agent6_merge_content: '图文合成',
+    ai_modify_outline: 'AI 修改大纲',
+  }
+  return agentMap[agentName] || agentName || '--'
+}
+
+const handleSSEMessage = async (msg: SSEMessage) => {
+  const payload = payloadOf(msg)
+  if (msg.taskId) {
+    taskId.value = msg.taskId
+  }
 
   switch (msg.type) {
     case 'AGENT1_COMPLETE':
-      // 智能体1完成，进入标题生成阶段（显示加载）
       currentPhase.value = 'TITLE_GENERATING'
-      currentStep.value = 1
-      addLog('智能体1：标题方案生成完成', 'success')
+      currentStep.value = 0
+      isCreating.value = true
+      addLog('标题方案生成完成', 'success')
       break
-
     case 'TITLES_GENERATED':
-      // 标题方案生成完成，切换到选择标题阶段
       currentPhase.value = 'TITLE_SELECTING'
-      titleOptions.value = msg.titleOptions || []
+      currentStep.value = 1
       isCreating.value = false
-      addLog(`生成了 ${msg.titleOptions?.length || 0} 个标题方案`, 'success')
+      titleOptions.value = normalizeTitleOptions(payload.titleOptions as API.TitleOption[])
+      addLog(`已生成 ${titleOptions.value.length} 个标题方案`, 'success')
       break
-
-    case 'AGENT2_STREAMING':
-      // 大纲流式输出（显示生成中状态）
+    case 'AGENT2_STREAMING': {
       currentPhase.value = 'OUTLINE_GENERATING'
+      currentStep.value = 1
+      isCreating.value = true
       isOutlineStreaming.value = true
-      outlineRaw.value += msg.content || ''
+      const chunk = String(payload.content || '')
+      outlineRaw.value += chunk
       scrollToBottom()
       break
-
+    }
     case 'OUTLINE_GENERATED':
-      // 大纲生成完成，切换到编辑大纲阶段
       currentPhase.value = 'OUTLINE_EDITING'
-      outline.value = msg.outline || []
+      currentStep.value = 1
       isCreating.value = false
       isOutlineStreaming.value = false
-      addLog('大纲生成完成，等待确认', 'success')
-      // 保持在步骤1（规划大纲），用户编辑大纲时仍处于此阶段
+      outline.value = (payload.outline as API.OutlineSection[]) || []
+      outlineRaw.value = JSON.stringify({ sections: outline.value })
+      addLog('大纲已生成，等待确认', 'success')
       break
-
     case 'AGENT2_COMPLETE':
-      // 大纲完成（内部处理，已在 OUTLINE_GENERATED 中切换阶段）
-      // 不改变 currentStep，保持在步骤1，等用户确认大纲后才进入步骤2
       break
-
-    case 'AGENT3_STREAMING':
-      // 正文流式输出，进入步骤2（撰写正文）
+    case 'AGENT3_STREAMING': {
       currentPhase.value = 'CONTENT_GENERATING'
       currentStep.value = 2
+      isCreating.value = true
       isStreaming.value = true
-      article.value.content += msg.content || ''
+      const chunk = String(payload.content || '')
+      article.value.content = `${article.value.content || ''}${chunk}`
       scrollToBottom()
       break
-
+    }
     case 'AGENT3_COMPLETE':
-      // 正文完成，进入配图分析步骤
       isStreaming.value = false
       currentStep.value = 3
       addLog('正文生成完成', 'success')
       break
-
-    case 'AGENT4_COMPLETE':
-      // 配图分析完成，进入配图生成步骤
-      currentStep.value = 4
-      totalImages.value = msg.imageRequirements?.length || 5
-      addLog(`配图需求分析完成，共 ${totalImages.value} 张`, 'success')
+    case 'AGENT3_REVIEW_COMPLETE':
+      currentStep.value = 3
+      article.value.content = String(payload.content || article.value.content || '')
+      addLog('正文评审完成', 'success')
       break
-
+    case 'AGENT4_COMPLETE': {
+      currentStep.value = 3
+      const requirements = (payload.imageRequirements as API.ImageRequirement[]) || []
+      totalImages.value = requirements.length > 0 ? requirements.length : totalImages.value
+      addLog(`已分析出 ${requirements.length} 条配图需求`, 'success')
+      break
+    }
     case 'IMAGE_COMPLETE':
-      // 单张配图完成
-      imageCount.value++
-      imageProgress.value = Math.round((imageCount.value / totalImages.value) * 100)
-      addLog(`配图生成中 ${imageCount.value}/${totalImages.value}`, 'info')
+      currentStep.value = 4
+      imageCount.value += 1
+      imageProgress.value = totalImages.value > 0
+        ? Math.min(100, Math.round((imageCount.value / totalImages.value) * 100))
+        : 0
+      addLog(`正在生成配图 ${imageCount.value}/${totalImages.value}`, 'info')
       break
-
     case 'AGENT5_COMPLETE':
-      // 所有配图完成，进入图文合成步骤
-      currentStep.value = 5
-      article.value.images = msg.images
-      addLog('所有配图生成完成', 'success')
+      currentStep.value = 4
+      article.value.images = (payload.images as API.ImageItem[]) || []
+      if (article.value.images?.length) {
+        imageCount.value = article.value.images.length
+        totalImages.value = Math.max(totalImages.value, imageCount.value)
+        imageProgress.value = 100
+      }
+      addLog('配图生成完成', 'success')
       break
-
     case 'MERGE_COMPLETE':
-      // 图文合成完成
-      article.value.fullContent = msg.fullContent
+      currentStep.value = 5
+      article.value.fullContent = String(payload.fullContent || '')
       scrollToBottom()
       addLog('图文合成完成', 'success')
       break
-
     case 'ALL_COMPLETE':
-      // 全部完成
       currentPhase.value = 'COMPLETED'
       currentStep.value = 6
-      isCompleted.value = true
-      message.success('文章创作完成!')
-      addLog('✨ 文章创作完成！', 'success')
-      break
-
-    case 'ERROR':
-      errorMessage.value = msg.message || '创作失败'
-      errorVisible.value = true
       isCreating.value = false
-      currentPhase.value = 'INPUT'
-      addLog(`创作失败: ${msg.message || '未知错误'}`, 'error')
+      isCompleted.value = true
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      lastFailedTaskId.value = ''
+      await loadExecutionStats(taskId.value)
+      stopExecutionStatsPolling()
+      await forgetTask()
+      message.success('文章创建成功')
+      addLog('文章创建完成', 'success')
+      break
+    case 'ERROR': {
+      const msgText = String(payload.message || '文章创建失败')
+      errorMessage.value = msgText
+      errorVisible.value = true
+      lastFailedTaskId.value = taskId.value
+      isCreating.value = false
+      isStreaming.value = false
+      isOutlineStreaming.value = false
+      if (msg.phase) {
+        setUiByPhase(msg.phase, 'FAILED', msg.progress)
+      }
+      await loadExecutionStats(taskId.value)
+      stopExecutionStatsPolling()
+      await forgetTask()
+      addLog(`执行失败：${msgText}`, 'error')
+      break
+    }
+    default:
       break
   }
 }
 
-// 确认标题
-const handleConfirmTitle = async (data: {mainTitle: string, subTitle: string, userDescription: string}) => {
+const handleConfirmTitle = async (data: {
+  mainTitle: string
+  subTitle: string
+  userDescription: string
+}) => {
   confirmLoading.value = true
   try {
     await confirmTitle({
       taskId: taskId.value,
       selectedMainTitle: data.mainTitle,
       selectedSubTitle: data.subTitle,
-      userDescription: data.userDescription
+      userDescription: data.userDescription,
     })
-    // 保存标题信息，用于大纲生成阶段展示
     article.value.mainTitle = data.mainTitle
     article.value.subTitle = data.subTitle
-    // 不直接切换阶段，等待 SSE 消息 OUTLINE_GENERATED
-    message.success('标题已确认，正在生成大纲...')
+    currentPhase.value = 'OUTLINE_GENERATING'
+    isCreating.value = true
+    isOutlineStreaming.value = false
+    startExecutionStatsPolling(taskId.value)
+    connectToTaskStream(taskId.value, true)
+    message.success('标题已确认，开始生成大纲')
   } catch (error) {
     const err = error as Error
     message.error(err.message || '确认标题失败')
@@ -908,18 +1644,22 @@ const handleConfirmTitle = async (data: {mainTitle: string, subTitle: string, us
   }
 }
 
-// 确认大纲
-const handleConfirmOutline = async (outlineData: Array<{section: number, title: string, points: string[]}>) => {
+const handleConfirmOutline = async (outlineData: API.OutlineSection[]) => {
   confirmLoading.value = true
   try {
     await confirmOutline({
       taskId: taskId.value,
-      outline: outlineData
+      outline: outlineData,
     })
-    // 更新 outlineRaw 为用户修改后的大纲，确保 CONTENT_GENERATING 阶段展示正确的大纲
+    outline.value = outlineData
     outlineRaw.value = JSON.stringify({ sections: outlineData })
-    // 不直接切换阶段，等待后端开始生成正文并推送 AGENT3_STREAMING
-    message.success('大纲已确认，正在生成正文...')
+    currentPhase.value = 'CONTENT_GENERATING'
+    currentStep.value = 2
+    isCreating.value = true
+    isStreaming.value = false
+    startExecutionStatsPolling(taskId.value)
+    connectToTaskStream(taskId.value, true)
+    message.success('大纲已确认，开始生成正文')
   } catch (error) {
     const err = error as Error
     message.error(err.message || '确认大纲失败')
@@ -928,70 +1668,135 @@ const handleConfirmOutline = async (outlineData: Array<{section: number, title: 
   }
 }
 
-// 处理 SSE 错误
 const handleSSEError = (error: Event) => {
-  console.error('SSE错误:', error)
-  message.error('连接失败,请重试')
+  console.error('SSE connection error:', error)
+  closeCurrentConnection()
+  stopExecutionStatsPolling()
+  if (isCompleted.value || currentPhase.value === 'COMPLETED') {
+    return
+  }
   isCreating.value = false
+  isStreaming.value = false
+  isOutlineStreaming.value = false
+  message.error('实时连接已断开，请稍后重试')
 }
 
-// 处理 SSE 完成
 const handleSSEComplete = () => {
-  console.log('SSE连接关闭')
+  closeCurrentConnection()
+  if (currentPhase.value === 'COMPLETED' || errorVisible.value) {
+    stopExecutionStatsPolling()
+  }
 }
 
-// 复制全文
 const copyContent = async () => {
   const content = article.value.fullContent || article.value.content || ''
   try {
     await navigator.clipboard.writeText(content)
-    message.success('已复制到剪贴板')
+    message.success('复制成功')
   } catch {
     message.error('复制失败')
   }
 }
 
-// 查看文章详情
 const viewArticle = () => {
   router.push(`/article/${taskId.value}`)
 }
 
-// 重新创作
-const resetCreate = () => {
-  currentPhase.value = 'INPUT'
-  topic.value = ''
-  selectedStyle.value = ''
-  titleOptions.value = []
-  outline.value = []
-  isCreating.value = false
-  isCompleted.value = false
-  isStreaming.value = false
-  isOutlineStreaming.value = false
-  currentStep.value = 0
-  imageCount.value = 0
-  imageProgress.value = 0
-  outlineRaw.value = ''
-  confirmLoading.value = false
-  realtimeLogs.value = []
-  article.value = {
-    mainTitle: '',
-    subTitle: '',
-    content: '',
-    fullContent: '',
-    images: [],
+const handleResumeTask = async () => {
+  if (!taskId.value) {
+    message.warning('当前没有可恢复的任务')
+    return
+  }
+
+  try {
+    confirmLoading.value = true
+    const activeTaskId = taskId.value
+    const res = await resumeTask({ taskId: activeTaskId })
+    const snapshot = res.data.data
+    if (snapshot) {
+      applySnapshot(snapshot)
+    }
+    errorVisible.value = false
+    errorMessage.value = ''
+    lastFailedTaskId.value = ''
+    isCreating.value = true
+    await rememberTask(activeTaskId)
+    addLog(`任务已恢复执行：${getPhaseDisplayName(snapshot?.phase || currentPhase.value)}`, 'info')
+    startExecutionStatsPolling(activeTaskId)
+    connectToTaskStream(activeTaskId, true)
+    message.success('任务恢复成功')
+  } catch (error) {
+    const err = error as Error
+    message.error(err.message || '恢复任务失败')
+  } finally {
+    confirmLoading.value = false
   }
 }
 
-// 组件挂载时检查路由参数
-onMounted(() => {
-  if (route.query.topic) {
-    topic.value = route.query.topic as string
+const handleRetryNode = async (node?: string) => {
+  if (!taskId.value || !node) {
+    message.warning('当前节点暂不支持重试')
+    return
+  }
+
+  try {
+    confirmLoading.value = true
+    const activeTaskId = taskId.value
+    const res = await retryNode({
+      taskId: activeTaskId,
+      node,
+    })
+    const snapshot = res.data.data
+    if (snapshot) {
+      applySnapshot(snapshot)
+    }
+    errorVisible.value = false
+    errorMessage.value = ''
+    lastFailedTaskId.value = ''
+    isCreating.value = true
+    await rememberTask(activeTaskId)
+    addLog(`已发起节点重试：${getNodeDisplayName(node)}`, 'info')
+    startExecutionStatsPolling(activeTaskId)
+    connectToTaskStream(activeTaskId, true)
+    message.success('节点重试已发起')
+  } catch (error) {
+    const err = error as Error
+    message.error(err.message || '节点重试失败')
+  } finally {
+    confirmLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  if (typeof route.query.topic === 'string') {
+    topic.value = route.query.topic
+  }
+
+  if (typeof route.query.style === 'string' && route.query.style.trim()) {
+    selectedStyle.value = route.query.style.trim()
+  }
+
+  const routeTaskId = typeof route.query.taskId === 'string' ? route.query.taskId : ''
+  const cachedTaskId = getStoredTaskId()
+  const restoreTaskId = routeTaskId || cachedTaskId
+  if (restoreTaskId) {
+    await restoreTask(restoreTaskId, true)
+    return
+  }
+
+  try {
+    const res = await getUserCreationPreference()
+    if (res.data.code === 0) {
+      applyUserPreference(res.data.data)
+    }
+  } catch (error) {
+    console.warn('Failed to load user creation preference:', error)
   }
 })
 
-// 组件卸载前关闭 SSE
 onBeforeUnmount(() => {
-  closeSSE(eventSource)
+  closeCurrentConnection()
+  stopExecutionStatsPolling()
 })
 </script>
 
@@ -1008,7 +1813,7 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-/* 左侧边栏 */
+/* 宸︿晶杈规爮 */
 .sidebar-left {
   background: white;
   border-right: 1px solid var(--color-border);
@@ -1148,14 +1953,14 @@ onBeforeUnmount(() => {
 }
 
 
-/* 主内容区 */
+/* 涓诲唴瀹瑰尯 */
 .main-content {
   padding: 32px 40px;
   overflow-y: auto;
   background: white;
 }
 
-/* 输入状态 */
+/* 杈撳叆鐘舵€?*/
 .input-state {
   max-width: 700px;
   margin: 0 auto;
@@ -1247,7 +2052,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-/* 文章风格选择 */
+/* 鏂囩珷椋庢牸閫夋嫨 */
 .style-section {
   padding: 16px;
   background: var(--color-background-secondary);
@@ -1280,7 +2085,7 @@ onBeforeUnmount(() => {
   background: rgba(34, 197, 94, 0.08);
 }
 
-/* 配图方式选择 */
+/* 閰嶅浘鏂瑰紡閫夋嫨 */
 .image-methods-section {
   padding: 16px;
   background: var(--color-background-secondary);
@@ -1369,13 +2174,13 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 创作进行中 */
+/* 鍒涗綔杩涜涓?*/
 .creating-state,
 .completed-state {
   max-width: 100%;
 }
 
-/* 标题区域 */
+/* 鏍囬鍖哄煙 */
 .preview-header {
   text-align: center;
   margin-bottom: 24px;
@@ -1397,7 +2202,7 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-/* 大纲预览 */
+/* 澶х翰棰勮 */
 .outline-preview {
   margin-bottom: 24px;
   padding: 20px 24px;
@@ -1451,7 +2256,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 正文预览 */
+/* 姝ｆ枃棰勮 */
 .content-preview {
   line-height: 1.8;
 }
@@ -1487,7 +2292,7 @@ onBeforeUnmount(() => {
     object-fit: contain;
   }
 
-  // Mermaid 图表特殊处理（SVG 格式）
+  // Mermaid 鍥捐〃鐗规畩澶勭悊锛圫VG 鏍煎紡锛?
   :deep(img[src$=".svg"]) {
     max-width: 800px;
     max-height: 500px;
@@ -1538,7 +2343,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 完成状态 */
+/* 瀹屾垚鐘舵€?*/
 .success-header {
   display: inline-flex;
   align-items: center;
@@ -1556,7 +2361,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 右侧辅助面板 */
+/* 鍙充晶杈呭姪闈㈡澘 */
 .sidebar-right {
   background: white;
   border-left: 1px solid var(--color-border);
@@ -1587,7 +2392,7 @@ onBeforeUnmount(() => {
   margin: 0 0 16px;
 }
 
-/* 配额信息样式 */
+/* 閰嶉淇℃伅鏍峰紡 */
 .quota-section {
   background: linear-gradient(135deg, rgba(34, 197, 94, 0.05) 0%, rgba(34, 197, 94, 0.02) 100%);
   border-radius: var(--radius-lg);
@@ -1665,7 +2470,7 @@ onBeforeUnmount(() => {
   margin: 0 auto;
 }
 
-/* 热门选题 */
+/* 鐑棬閫夐 */
 .hot-tags {
   display: flex;
   flex-wrap: wrap;
@@ -1691,7 +2496,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 创作技巧 */
+/* 鍒涗綔鎶€宸?*/
 .tips-list {
   display: flex;
   flex-direction: column;
@@ -1744,7 +2549,7 @@ onBeforeUnmount(() => {
   line-height: 1.4;
 }
 
-/* 创作进度信息 */
+/* 鍒涗綔杩涘害淇℃伅 */
 .progress-info {
   display: flex;
   flex-direction: column;
@@ -1794,7 +2599,285 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 实时日志 */
+.resume-section {
+  .resume-card {
+    padding: 14px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, rgba(250, 173, 20, 0.10) 0%, rgba(250, 173, 20, 0.04) 100%);
+    border: 1px solid rgba(250, 173, 20, 0.18);
+  }
+
+  .resume-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #ad6800;
+    margin-bottom: 8px;
+  }
+
+  .resume-desc {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+
+  .resume-btn.ant-btn {
+    background: linear-gradient(135deg, #faad14 0%, #d48806 100%) !important;
+    border: none !important;
+    color: white !important;
+
+    &:hover,
+    &:focus {
+      opacity: 0.92;
+      color: white !important;
+    }
+  }
+}
+
+/* 鎵ц瑙傛祴 */
+.observability-section {
+  .observability-summary {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .summary-card {
+    padding: 12px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.03) 100%);
+    border: 1px solid rgba(34, 197, 94, 0.12);
+  }
+
+  .summary-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+
+  .summary-value {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-primary-dark);
+    line-height: 1.5;
+  }
+
+  .observability-group + .observability-group {
+    margin-top: 16px;
+  }
+
+  .observability-group-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+
+  .observability-group-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .observability-group-subtitle {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+
+  .mini-timeline {
+    position: relative;
+    padding-left: 4px;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: var(--color-border-light);
+    }
+
+    &.compact .mini-timeline-item {
+      padding-bottom: 10px;
+    }
+  }
+
+  .mini-timeline-item {
+    position: relative;
+    display: flex;
+    gap: 10px;
+    padding-left: 24px;
+    padding-bottom: 14px;
+
+    &:last-child {
+      padding-bottom: 0;
+    }
+  }
+
+  .mini-timeline-indicator {
+    position: absolute;
+    left: 0;
+    top: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    border: 2px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mini-timeline-item.success .mini-timeline-indicator {
+    border-color: var(--color-success);
+  }
+
+  .mini-timeline-item.failed .mini-timeline-indicator {
+    border-color: var(--color-error);
+  }
+
+  .mini-timeline-item.running .mini-timeline-indicator {
+    border-color: var(--color-primary);
+  }
+
+  .mini-timeline-item.info .mini-timeline-indicator {
+    border-color: #1677ff;
+  }
+
+  .timeline-icon {
+    font-size: 12px;
+
+    &.success {
+      color: var(--color-success);
+    }
+
+    &.failed {
+      color: var(--color-error);
+    }
+
+    &.running {
+      color: var(--color-primary);
+    }
+
+    &.info {
+      color: #1677ff;
+    }
+  }
+
+  .mini-timeline-content {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: var(--color-background-secondary);
+    border: 1px solid var(--color-border-light);
+  }
+
+  .mini-timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .mini-timeline-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .mini-timeline-duration {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-primary);
+  }
+
+  .mini-timeline-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+
+  .timeline-phase-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: white;
+    border: 1px solid var(--color-border-light);
+    color: var(--color-text-secondary);
+  }
+
+  .mini-timeline-config {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .config-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: rgba(15, 23, 42, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .mini-timeline-config-summary {
+    margin-top: 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    word-break: break-word;
+  }
+
+  .mini-timeline-message {
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+    word-break: break-word;
+    white-space: pre-wrap;
+
+    &.error {
+      color: var(--color-error);
+    }
+  }
+
+  .retry-node-btn.ant-btn-link {
+    padding: 0;
+    margin-top: 8px;
+    height: auto;
+    color: #d48806;
+    font-size: 12px;
+    font-weight: 600;
+  }
+}
+
+/* 瀹炴椂鏃ュ織 */
+.memory-section {
+  :deep(.task-memory-panel) {
+    gap: 14px;
+  }
+}
+
 .realtime-logs-section {
   .logs-container {
     max-height: 300px;
@@ -1861,7 +2944,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 选题展示 */
+/* 閫夐灞曠ず */
 .topic-display {
   padding: 12px 16px;
   background: var(--color-background-secondary);
@@ -1876,7 +2959,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 提示面板样式 */
+/* 鎻愮ず闈㈡澘鏍峰紡 */
 .tips-section {
   .tip-icon {
     background: transparent;
@@ -1888,7 +2971,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 文章统计 */
+/* 鏂囩珷缁熻 */
 .stats-section {
   margin-top: auto;
 }
@@ -1918,7 +3001,7 @@ onBeforeUnmount(() => {
   color: var(--color-text-muted);
 }
 
-/* 底部帮助链接 */
+/* 搴曢儴甯姪閾炬帴 */
 .panel-footer {
   margin-top: auto;
   padding-top: 16px;
@@ -1969,7 +3052,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 阶段切换过渡动画 */
+/* 闃舵鍒囨崲杩囨浮鍔ㄧ敾 */
 .fade-slide-enter-active,
 .fade-slide-leave-active {
   transition: all 0.3s ease;
@@ -1985,7 +3068,7 @@ onBeforeUnmount(() => {
   transform: translateX(-30px);
 }
 
-/* 动画 */
+/* 鍔ㄧ敾 */
 @keyframes blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
@@ -2001,7 +3084,7 @@ onBeforeUnmount(() => {
   50% { opacity: 0.5; }
 }
 
-/* 加载阶段样式 */
+/* 鍔犺浇闃舵鏍峰紡 */
 .loading-stage {
   display: flex;
   flex-direction: column;
@@ -2024,7 +3107,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 大纲生成中状态 */
+/* 澶х翰鐢熸垚涓姸鎬?*/
 .outline-generating-state {
   max-width: 100%;
 }
@@ -2039,7 +3122,7 @@ onBeforeUnmount(() => {
   color: var(--color-text-secondary);
 }
 
-/* 渐入动画 */
+/* 娓愬叆鍔ㄧ敾 */
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -2055,7 +3138,7 @@ onBeforeUnmount(() => {
   animation: fade-in 0.4s ease-out;
 }
 
-/* 响应式 */
+/* 鍝嶅簲寮?*/
 @media (max-width: 1400px) {
   .create-layout {
     grid-template-columns: 280px 1fr 260px;
@@ -2087,6 +3170,19 @@ onBeforeUnmount(() => {
 
   .main-content {
     padding: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .observability-section {
+    .observability-summary {
+      grid-template-columns: 1fr;
+    }
+
+    .mini-timeline-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
   }
 }
 </style>

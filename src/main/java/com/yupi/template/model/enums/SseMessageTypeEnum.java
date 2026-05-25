@@ -46,6 +46,11 @@ public enum SseMessageTypeEnum {
     AGENT3_COMPLETE("AGENT3_COMPLETE", "正文生成完成"),
 
     /**
+     * 正文 Reviewer 完成
+     */
+    AGENT3_REVIEW_COMPLETE("AGENT3_REVIEW_COMPLETE", "正文评审完成"),
+
+    /**
      * 智能体4完成（分析配图需求）
      */
     AGENT4_COMPLETE("AGENT4_COMPLETE", "配图需求分析完成"),
@@ -98,5 +103,17 @@ public enum SseMessageTypeEnum {
      */
     public String getStreamingPrefix() {
         return this.value + ":";
+    }
+
+    public static SseMessageTypeEnum fromValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        for (SseMessageTypeEnum typeEnum : values()) {
+            if (typeEnum.value.equals(value)) {
+                return typeEnum;
+            }
+        }
+        return null;
     }
 }

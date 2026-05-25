@@ -1,4 +1,4 @@
-# Maven
+﻿# Maven
 target/
 !.mvn/wrapper/maven-wrapper.jar
 *.jar
@@ -74,3 +74,9 @@ frontend/src/config/env.ts
 go-backend/
 python-backend/
 # 初始化项目
+
+简历项目描述
+面试时怎么讲这个项目的回答模板
+
+简历项目描述.md
+面试时怎么讲这个项目的回答模板.md

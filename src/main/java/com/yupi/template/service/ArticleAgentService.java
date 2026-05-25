@@ -1,19 +1,21 @@
-package com.yupi.template.service;
+﻿package com.yupi.template.service;
 
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
-import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.yupi.template.annotation.AgentExecution;
-import com.yupi.template.constant.PromptConstant;
+import com.yupi.template.agent.agents.AgentPromptSupport;
+import com.yupi.template.agent.config.AgentProfile;
+import com.yupi.template.agent.tools.ImageGenerationTool;
 import com.yupi.template.model.dto.article.ArticleState;
-import com.yupi.template.model.dto.image.ImageRequest;
-import com.yupi.template.model.enums.ArticleStyleEnum;
 import com.yupi.template.model.enums.ImageMethodEnum;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
+import com.yupi.template.model.vo.ArticleMemoryContextVO;
+import com.yupi.template.model.vo.ImageFallbackDecisionVO;
+import com.yupi.template.model.vo.ImageStrategyDecisionVO;
+import com.yupi.template.model.vo.NodeExecutionMetadata;
 import com.yupi.template.utils.GsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.aop.framework.AopContext;
@@ -22,257 +24,286 @@ import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import java.util.function.Consumer;
 
 /**
- * 文章智能体编排服务
- *
- * @author <a href="XXXX">呼哈设计</a>
+ * Legacy article agent workflow service.
  */
 @Service
 @Slf4j
 public class ArticleAgentService {
 
+    private static final String TITLE_PROFILE = "title-generator";
+    private static final String OUTLINE_PROFILE = "outline-generator";
+    private static final String CONTENT_PROFILE = "content-generator";
+    private static final String CONTENT_REVIEW_PROFILE = "content-reviewer";
+    private static final String IMAGE_PROFILE = "image-analyzer";
+
     @Resource
     private DashScopeChatModel chatModel;
 
     @Resource
-    private ImageServiceStrategy imageServiceStrategy;
+    private ArticleStructuredOutputService articleStructuredOutputService;
 
-    /**
-     * 阶段1：生成标题方案（3-5个）
-     *
-     * @param state         文章状态
-     * @param streamHandler 流式输出处理器
-     */
+    @Resource
+    private AgentPromptSupport agentPromptSupport;
+
+    @Resource
+    private ImageStrategyRouterService imageStrategyRouterService;
+
+    @Resource
+    private ArticleMemoryService articleMemoryService;
+
+    @Resource
+    private ArticleNodeLogService articleNodeLogService;
+
+    @Resource
+    private ArticleNodeReplayService articleNodeReplayService;
+
+    @Resource
+    private ImageGenerationTool imageGenerationTool;
+
     public void executePhase1_GenerateTitles(ArticleState state, Consumer<String> streamHandler) {
         try {
-            // 智能体1：生成标题方案
-            log.info("阶段1：开始生成标题方案, taskId={}", state.getTaskId());
-            // 通过代理调用，使 AOP 生效
-            getProxy().agent1GenerateTitleOptions(state);
+            log.info("Phase 1 generate titles started, taskId={}", state.getTaskId());
+            getProxy().agent1GenerateTitleOptions(state, buildMetadataForProfile(TITLE_PROFILE, "agent1_title", false, true));
             streamHandler.accept(SseMessageTypeEnum.AGENT1_COMPLETE.getValue());
-            log.info("阶段1：标题方案生成完成, taskId={}, optionsCount={}", 
-                state.getTaskId(), state.getTitleOptions().size());
+            log.info("Phase 1 generate titles finished, taskId={}, optionsCount={}",
+                    state.getTaskId(), state.getTitleOptions().size());
         } catch (Exception e) {
-            log.error("阶段1：标题方案生成失败, taskId={}", state.getTaskId(), e);
-            throw new RuntimeException("标题方案生成失败: " + e.getMessage(), e);
+            log.error("Phase 1 generate titles failed, taskId={}", state.getTaskId(), e);
+            throw new RuntimeException("Title generation failed: " + e.getMessage(), e);
         }
     }
 
-    /**
-     * 阶段2：生成大纲（用户选择标题后）
-     *
-     * @param state         文章状态
-     * @param streamHandler 流式输出处理器
-     */
     public void executePhase2_GenerateOutline(ArticleState state, Consumer<String> streamHandler) {
         try {
-            // 智能体2：生成大纲（流式输出）
-            log.info("阶段2：开始生成大纲, taskId={}", state.getTaskId());
-            // 通过代理调用，使 AOP 生效
-            getProxy().agent2GenerateOutline(state, streamHandler);
+            log.info("Phase 2 generate outline started, taskId={}", state.getTaskId());
+            getProxy().agent2GenerateOutline(state, streamHandler,
+                    buildMetadataForProfile(OUTLINE_PROFILE, "agent2_outline", true, true));
             streamHandler.accept(SseMessageTypeEnum.AGENT2_COMPLETE.getValue());
-            log.info("阶段2：大纲生成完成, taskId={}", state.getTaskId());
+            log.info("Phase 2 generate outline finished, taskId={}", state.getTaskId());
         } catch (Exception e) {
-            log.error("阶段2：大纲生成失败, taskId={}", state.getTaskId(), e);
-            throw new RuntimeException("大纲生成失败: " + e.getMessage(), e);
+            log.error("Phase 2 generate outline failed, taskId={}", state.getTaskId(), e);
+            throw new RuntimeException("Outline generation failed: " + e.getMessage(), e);
         }
     }
 
-    /**
-     * 阶段3：生成正文+配图（用户确认大纲后）
-     *
-     * @param state         文章状态
-     * @param streamHandler 流式输出处理器
-     */
     public void executePhase3_GenerateContent(ArticleState state, Consumer<String> streamHandler) {
         try {
-            // 获取代理对象
             ArticleAgentService proxy = getProxy();
-            
-            // 智能体3：生成正文（流式输出）
-            log.info("阶段3：开始生成正文, taskId={}", state.getTaskId());
-            proxy.agent3GenerateContent(state, streamHandler);
+            log.info("Phase 3 generate content started, taskId={}", state.getTaskId());
+            proxy.agent3GenerateContent(state, streamHandler,
+                    buildMetadataForProfile(CONTENT_PROFILE, "agent3_content", true, false));
             streamHandler.accept(SseMessageTypeEnum.AGENT3_COMPLETE.getValue());
 
-            // 智能体4：分析配图需求
-            log.info("阶段3：开始分析配图需求, taskId={}", state.getTaskId());
-            proxy.agent4AnalyzeImageRequirements(state);
+            proxy.agent3ReviewContent(state,
+                    buildMetadataForProfile(CONTENT_REVIEW_PROFILE, "agent3_content_review", false, true));
+            streamHandler.accept(SseMessageTypeEnum.AGENT3_REVIEW_COMPLETE.getValue());
+
+            proxy.imageStrategyRouter(state, buildImageRouterMetadata());
+            log.info("Phase 3 analyze image requirements started, taskId={}", state.getTaskId());
+            proxy.agent4AnalyzeImageRequirements(state,
+                    buildMetadataForProfile(IMAGE_PROFILE, "agent4_image", false, true));
             streamHandler.accept(SseMessageTypeEnum.AGENT4_COMPLETE.getValue());
 
-            // 智能体5：生成配图
-            log.info("阶段3：开始生成配图, taskId={}", state.getTaskId());
-            proxy.agent5GenerateImages(state, streamHandler);
+            log.info("Phase 3 generate images started, taskId={}", state.getTaskId());
+            proxy.agent5GenerateImages(state, streamHandler, buildImageGenerationMetadata());
             streamHandler.accept(SseMessageTypeEnum.AGENT5_COMPLETE.getValue());
 
-            // 图文合成：将配图插入正文
-            log.info("阶段3：开始图文合成, taskId={}", state.getTaskId());
+            log.info("Phase 3 merge content started, taskId={}", state.getTaskId());
             proxy.mergeImagesIntoContent(state);
             streamHandler.accept(SseMessageTypeEnum.MERGE_COMPLETE.getValue());
-
-            log.info("阶段3：正文生成完成, taskId={}", state.getTaskId());
+            log.info("Phase 3 finished, taskId={}", state.getTaskId());
         } catch (Exception e) {
-            log.error("阶段3：正文生成失败, taskId={}", state.getTaskId(), e);
-            throw new RuntimeException("正文生成失败: " + e.getMessage(), e);
+            log.error("Phase 3 failed, taskId={}", state.getTaskId(), e);
+            throw new RuntimeException("Content generation failed: " + e.getMessage(), e);
         }
     }
 
-    /**
-     * 智能体1：生成标题方案（3-5个）
-     */
-    @AgentExecution(value = "agent1_generate_titles", description = "生成标题方案")
-    public void agent1GenerateTitleOptions(ArticleState state) {
-        String prompt = PromptConstant.AGENT1_TITLE_PROMPT
+    @AgentExecution(value = "agent1_generate_titles", description = "鐢熸垚鏍囬鏂规")
+    public void agent1GenerateTitleOptions(ArticleState state, NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(TITLE_PROFILE, "agent1_title", false, true);
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{topic}", state.getTopic())
-                + getStylePrompt(state.getStyle());
+                + agentPromptSupport.getStylePrompt(state.getStyle());
 
-        String content = callLlm(prompt);
-        List<ArticleState.TitleOption> titleOptions = parseJsonListResponse(
-                content, 
-                new TypeToken<List<ArticleState.TitleOption>>(){}, 
-                "标题方案"
+        List<ArticleState.TitleOption> titleOptions = articleStructuredOutputService.execute(
+                promptContent,
+                "titleOptions",
+                prompt -> callLlm(prompt, profile),
+                new TypeToken<List<ArticleState.TitleOption>>() {
+                },
+                this::isValidTitleOptions
         );
         state.setTitleOptions(titleOptions);
-        log.info("智能体1：标题方案生成成功, optionsCount={}", titleOptions.size());
+        log.info("Title options generated, count={}, model={}, promptKey={}, promptVersion={}",
+                titleOptions.size(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
     }
 
-    /**
-     * 智能体2：生成大纲（流式输出）
-     */
-    @AgentExecution(value = "agent2_generate_outline", description = "生成文章大纲")
-    public void agent2GenerateOutline(ArticleState state, Consumer<String> streamHandler) {
-        // 构建 prompt，根据是否有用户补充描述插入对应部分
+    @AgentExecution(value = "agent2_generate_outline", description = "鐢熸垚鏂囩珷澶х翰")
+    public void agent2GenerateOutline(ArticleState state, Consumer<String> streamHandler, NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(OUTLINE_PROFILE, "agent2_outline", true, true);
         String descriptionSection = "";
         if (state.getUserDescription() != null && !state.getUserDescription().trim().isEmpty()) {
-            descriptionSection = PromptConstant.AGENT2_DESCRIPTION_SECTION
+            descriptionSection = agentPromptSupport.getPromptContent("agent2_description_section", profile.getPromptVersion())
                     .replace("{userDescription}", state.getUserDescription());
         }
-        
-        String prompt = PromptConstant.AGENT2_OUTLINE_PROMPT
+
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{mainTitle}", state.getTitle().getMainTitle())
                 .replace("{subTitle}", state.getTitle().getSubTitle())
                 .replace("{descriptionSection}", descriptionSection)
-                + getStylePrompt(state.getStyle());
+                + agentPromptSupport.getStylePrompt(state.getStyle());
 
-        String content = callLlmWithStreaming(prompt, streamHandler, SseMessageTypeEnum.AGENT2_STREAMING);
-        ArticleState.OutlineResult outlineResult = parseJsonResponse(content, ArticleState.OutlineResult.class, "大纲");
+        String content = callLlmWithStreaming(promptContent, profile, streamHandler, SseMessageTypeEnum.AGENT2_STREAMING);
+        ArticleState.OutlineResult outlineResult = articleStructuredOutputService.execute(
+                promptContent,
+                "outlineResult",
+                ignored -> content,
+                ArticleState.OutlineResult.class,
+                this::isValidOutlineResult
+        );
         state.setOutline(outlineResult);
-        log.info("智能体2：大纲生成成功, sections={}", outlineResult.getSections().size());
+        state.setOutlineRaw(content);
+        log.info("Outline generated, sections={}, model={}, promptKey={}, promptVersion={}",
+                outlineResult.getSections().size(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
     }
 
-    /**
-     * 智能体3：生成正文（流式输出）
-     */
-    @AgentExecution(value = "agent3_generate_content", description = "生成文章正文")
-    public void agent3GenerateContent(ArticleState state, Consumer<String> streamHandler) {
+    @AgentExecution(value = "agent3_generate_content", description = "鐢熸垚鏂囩珷姝ｆ枃")
+    public void agent3GenerateContent(ArticleState state, Consumer<String> streamHandler, NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(CONTENT_PROFILE, "agent3_content", true, false);
         String outlineText = GsonUtils.toJson(state.getOutline().getSections());
-        String prompt = PromptConstant.AGENT3_CONTENT_PROMPT
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{mainTitle}", state.getTitle().getMainTitle())
                 .replace("{subTitle}", state.getTitle().getSubTitle())
                 .replace("{outline}", outlineText)
-                + getStylePrompt(state.getStyle());
+                + agentPromptSupport.getStylePrompt(state.getStyle());
 
-        String content = callLlmWithStreaming(prompt, streamHandler, SseMessageTypeEnum.AGENT3_STREAMING);
+        String content = callLlmWithStreaming(promptContent, profile, streamHandler, SseMessageTypeEnum.AGENT3_STREAMING);
         state.setContent(content);
-        log.info("智能体3：正文生成成功, length={}", content.length());
+        log.info("Content generated, length={}, model={}, promptKey={}, promptVersion={}",
+                content.length(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
     }
 
-    /**
-     * 智能体4：分析配图需求（在正文中插入占位符）
-     */
-    @AgentExecution(value = "agent4_analyze_image_requirements", description = "分析配图需求")
-    public void agent4AnalyzeImageRequirements(ArticleState state) {
-        // 构建可用配图方式说明
+    @AgentExecution(value = "agent3_review_content", description = "璇勫姝ｆ枃骞舵渶灏忎慨璁?)
+    public void agent3ReviewContent(ArticleState state, NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(CONTENT_REVIEW_PROFILE, "agent3_content_review", false, true);
+        String outlineText = GsonUtils.toJson(state.getOutline().getSections());
+        ArticleMemoryContextVO memoryContext = articleMemoryService.buildCreationMemoryContext(state.getTaskId(), null);
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
+                .replace("{mainTitle}", state.getTitle().getMainTitle())
+                .replace("{subTitle}", state.getTitle().getSubTitle())
+                .replace("{outline}", outlineText)
+                .replace("{content}", state.getContent())
+                + buildReviewMemoryHints(memoryContext);
+        applyReviewMemoryContextMetadata(metadata, memoryContext);
+
+        ArticleState.ContentReviewResult reviewResult = articleStructuredOutputService.execute(
+                promptContent,
+                "contentReview",
+                prompt -> callLlm(prompt, profile),
+                ArticleState.ContentReviewResult.class,
+                this::isValidContentReviewResult
+        );
+        if (reviewResult.getRevisedContent() != null && !reviewResult.getRevisedContent().isBlank()) {
+            state.setContent(reviewResult.getRevisedContent());
+        }
+        state.setContentReview(reviewResult);
+        applyContentReviewMetadata(metadata, reviewResult, memoryContext);
+        log.info("Content reviewed, needsRevision={}, issues={}, model={}, promptKey={}, promptVersion={}",
+                reviewResult.getNeedsRevision(),
+                reviewResult.getIssues() == null ? 0 : reviewResult.getIssues().size(),
+                profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
+    }
+
+    public void imageStrategyRouter(ArticleState state, NodeExecutionMetadata metadata) {
+        ArticleMemoryContextVO memoryContext = articleMemoryService.buildCreationMemoryContext(state.getTaskId(), null);
+        applyImageMemoryContextMetadata(metadata, memoryContext, "router");
+        ImageStrategyDecisionVO decision = imageStrategyRouterService.route(state, metadata);
+        if (decision == null || decision.getPreferredMethods() == null || decision.getPreferredMethods().isEmpty()) {
+            return;
+        }
+        state.setEnabledImageMethods(decision.getPreferredMethods());
+        articleMemoryService.recordImageStrategyDecision(state.getTaskId(), state, decision);
+        articleMemoryService.recordNodeSnapshot(state.getTaskId(), "CONTENT_GENERATING", "image_strategy_router", "SUCCESS", state);
+        log.info("Image strategy routed, taskId={}, source={}, methods={}",
+                state.getTaskId(), decision.getSource(), decision.getPreferredMethods());
+    }
+
+    @AgentExecution(value = "agent4_analyze_image_requirements", description = "鍒嗘瀽閰嶅浘闇€姹?)
+    public void agent4AnalyzeImageRequirements(ArticleState state, NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(IMAGE_PROFILE, "agent4_image", false, true);
+        ArticleMemoryContextVO memoryContext = articleMemoryService.buildCreationMemoryContext(state.getTaskId(), null);
+        applyImageMemoryContextMetadata(metadata, memoryContext, "analyzer");
         String availableMethods = buildAvailableMethodsDescription(state.getEnabledImageMethods());
-        // 构建各配图方式的详细使用指南（只包含允许的方式）
         String methodUsageGuide = buildMethodUsageGuide(state.getEnabledImageMethods());
-        
-        String prompt = PromptConstant.AGENT4_IMAGE_REQUIREMENTS_PROMPT
+
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{mainTitle}", state.getTitle().getMainTitle())
                 .replace("{content}", state.getContent())
                 .replace("{availableMethods}", availableMethods)
                 .replace("{methodUsageGuide}", methodUsageGuide);
 
-        String content = callLlm(prompt);
-        ArticleState.Agent4Result agent4Result = parseJsonResponse(
-                content, 
-                ArticleState.Agent4Result.class, 
-                "配图需求"
+        ArticleState.Agent4Result agent4Result = articleStructuredOutputService.execute(
+                promptContent,
+                "imageRequirements",
+                prompt -> callLlm(prompt, profile),
+                ArticleState.Agent4Result.class,
+                this::isValidAgent4Result
         );
-        
-        // 更新正文为包含占位符的版本
+
         state.setContent(agent4Result.getContentWithPlaceholders());
-        
-        // 验证并过滤配图需求，确保所有 imageSource 都在允许列表中
         List<ArticleState.ImageRequirement> validatedRequirements = validateAndFilterImageRequirements(
-                agent4Result.getImageRequirements(), 
+                agent4Result.getImageRequirements(),
                 state.getEnabledImageMethods()
         );
-        
         state.setImageRequirements(validatedRequirements);
-        log.info("智能体4：配图需求分析成功, count={}, validated={}, 已在正文中插入占位符", 
-                agent4Result.getImageRequirements().size(), validatedRequirements.size());
+        applyImageAnalyzerSummary(metadata, validatedRequirements, state.getEnabledImageMethods());
+        log.info("Image requirements analyzed, rawCount={}, validatedCount={}, model={}, promptKey={}, promptVersion={}",
+                agent4Result.getImageRequirements().size(), validatedRequirements.size(),
+                profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
     }
 
-    /**
-     * 智能体5：生成配图（串行执行，支持混用多种配图方式，统一上传到 COS）
-     */
-    @AgentExecution(value = "agent5_generate_images", description = "生成配图")
-    public void agent5GenerateImages(ArticleState state, Consumer<String> streamHandler) {
+    @AgentExecution(value = "agent5_generate_images", description = "鐢熸垚閰嶅浘")
+    public void agent5GenerateImages(ArticleState state, Consumer<String> streamHandler, NodeExecutionMetadata metadata) {
+        ArticleMemoryContextVO memoryContext = articleMemoryService.buildCreationMemoryContext(state.getTaskId(), null);
+        applyImageMemoryContextMetadata(metadata, memoryContext, "generation");
         List<ArticleState.ImageResult> imageResults = new ArrayList<>();
-        
+        List<ArticleState.ImageFallbackRecord> fallbackRecords = new ArrayList<>();
         for (ArticleState.ImageRequirement requirement : state.getImageRequirements()) {
             String imageSource = requirement.getImageSource();
-            log.info("智能体5：开始获取配图, position={}, imageSource={}, keywords={}", 
+            log.info("Generate image, position={}, source={}, keywords={}",
                     requirement.getPosition(), imageSource, requirement.getKeywords());
-            
-            // 构建图片请求对象
-            ImageRequest imageRequest = ImageRequest.builder()
-                    .keywords(requirement.getKeywords())
-                    .prompt(requirement.getPrompt())
-                    .position(requirement.getPosition())
-                    .type(requirement.getType())
-                    .build();
-            
-            // 使用策略模式获取图片并统一上传到 COS
-            ImageServiceStrategy.ImageResult result = imageServiceStrategy.getImageAndUpload(imageSource, imageRequest);
-            
-            String cosUrl = result.getUrl();
-            ImageMethodEnum method = result.getMethod();
-            
-            // 创建配图结果（URL 已经是 COS 地址）
-            ArticleState.ImageResult imageResult = buildImageResult(requirement, cosUrl, method);
+
+            ImageGenerationTool.ImageGenerationResult result = buildImageWithFallback(requirement, state.getEnabledImageMethods());
+            ArticleState.ImageResult imageResult = buildImageResult(requirement, result);
             imageResults.add(imageResult);
-            
-            // 推送单张配图完成
-            String imageCompleteMessage = SseMessageTypeEnum.IMAGE_COMPLETE.getStreamingPrefix() + GsonUtils.toJson(imageResult);
-            streamHandler.accept(imageCompleteMessage);
-            
-            log.info("智能体5：配图获取并上传成功, position={}, method={}, cosUrl={}", 
-                    requirement.getPosition(), method.getValue(), cosUrl);
+            fallbackRecords.add(buildFallbackRecord(requirement, result));
+            streamHandler.accept(SseMessageTypeEnum.IMAGE_COMPLETE.getStreamingPrefix() + GsonUtils.toJson(imageResult));
+            log.info("Image generated, position={}, method={}, requestedMethod={}, fallbackApplied={}, url={}",
+                    requirement.getPosition(), result.getMethod(), result.getRequestedMethod(),
+                    result.getFallbackApplied(), result.getUrl());
         }
-        
         state.setImages(imageResults);
-        log.info("智能体5：所有配图生成并上传完成, count={}", imageResults.size());
+        state.setImageFallbackRecords(fallbackRecords);
+        applyImageGenerationSummary(metadata, imageResults, fallbackRecords);
+        recordImageFallbackObservability(state, fallbackRecords, metadata);
+        log.info("All images generated, count={}", imageResults.size());
     }
 
-    /**
-     * 图文合成：根据占位符将配图插入正文
-     */
-    @AgentExecution(value = "agent6_merge_content", description = "图文合成")
+    @AgentExecution(value = "agent6_merge_content", description = "鍥炬枃鍚堟垚")
     public void mergeImagesIntoContent(ArticleState state) {
         String content = state.getContent();
         List<ArticleState.ImageResult> images = state.getImages();
-        
         if (images == null || images.isEmpty()) {
             state.setFullContent(content);
             return;
         }
 
         String fullContent = content;
-        
-        // 遍历所有配图，根据占位符替换为实际图片
         for (ArticleState.ImageResult image : images) {
             String placeholder = image.getPlaceholderId();
             if (placeholder != null && !placeholder.isEmpty()) {
@@ -280,29 +311,23 @@ public class ArticleAgentService {
                 fullContent = fullContent.replace(placeholder, imageMarkdown);
             }
         }
-        
         state.setFullContent(fullContent);
-        log.info("图文合成完成, fullContentLength={}", fullContent.length());
+        log.info("Merge content finished, length={}", fullContent.length());
     }
 
-    // region 辅助方法
-
-    /**
-     * 调用 LLM（非流式）
-     */
-    private String callLlm(String prompt) {
-        ChatResponse response = chatModel.call(new Prompt(new UserMessage(prompt)));
+    private String callLlm(String promptContent, AgentProfile profile) {
+        Prompt prompt = agentPromptSupport.buildPrompt(promptContent, profile, false);
+        ChatResponse response = chatModel.call(prompt);
         return response.getResult().getOutput().getText();
     }
 
-    /**
-     * 调用 LLM（流式输出）
-     */
-    private String callLlmWithStreaming(String prompt, Consumer<String> streamHandler, SseMessageTypeEnum messageType) {
+    private String callLlmWithStreaming(String promptContent,
+                                        AgentProfile profile,
+                                        Consumer<String> streamHandler,
+                                        SseMessageTypeEnum messageType) {
         StringBuilder contentBuilder = new StringBuilder();
-        
-        Flux<ChatResponse> streamResponse = chatModel.stream(new Prompt(new UserMessage(prompt)));
-        
+        Prompt prompt = agentPromptSupport.buildPrompt(promptContent, profile, true);
+        Flux<ChatResponse> streamResponse = chatModel.stream(prompt);
         streamResponse
                 .doOnNext(response -> {
                     String chunk = response.getResult().getOutput().getText();
@@ -311,256 +336,539 @@ public class ArticleAgentService {
                         streamHandler.accept(messageType.getStreamingPrefix() + chunk);
                     }
                 })
-                .doOnError(error -> log.error("LLM 流式调用失败, messageType={}", messageType, error))
+                .doOnError(error -> log.error("Streaming LLM call failed, messageType={}", messageType, error))
                 .blockLast();
-        
         return contentBuilder.toString();
     }
 
-    /**
-     * 解析 JSON 响应
-     */
-    private <T> T parseJsonResponse(String content, Class<T> clazz, String name) {
-        try {
-            return GsonUtils.fromJson(content, clazz);
-        } catch (JsonSyntaxException e) {
-            log.error("{}解析失败, content={}", name, content, e);
-            throw new RuntimeException(name + "解析失败");
-        }
-    }
-
-    /**
-     * 解析 JSON 列表响应
-     */
-    private <T> T parseJsonListResponse(String content, TypeToken<T> typeToken, String name) {
-        try {
-            return GsonUtils.fromJson(content, typeToken);
-        } catch (JsonSyntaxException e) {
-            log.error("{}解析失败, content={}", name, content, e);
-            throw new RuntimeException(name + "解析失败");
-        }
-    }
-
-    /**
-     * 构建配图结果
-     */
-    private ArticleState.ImageResult buildImageResult(ArticleState.ImageRequirement requirement, 
-                                                       String imageUrl, 
-                                                       ImageMethodEnum method) {
+    private ArticleState.ImageResult buildImageResult(ArticleState.ImageRequirement requirement,
+                                                      ImageGenerationTool.ImageGenerationResult result) {
         ArticleState.ImageResult imageResult = new ArticleState.ImageResult();
         imageResult.setPosition(requirement.getPosition());
-        imageResult.setUrl(imageUrl);
-        imageResult.setMethod(method.getValue());
+        imageResult.setUrl(result.getUrl());
+        imageResult.setMethod(result.getMethod());
         imageResult.setKeywords(requirement.getKeywords());
         imageResult.setSectionTitle(requirement.getSectionTitle());
         imageResult.setDescription(requirement.getType());
         imageResult.setPlaceholderId(requirement.getPlaceholderId());
+        imageResult.setRequestedMethod(result.getRequestedMethod());
+        imageResult.setFallbackApplied(result.getFallbackApplied());
+        imageResult.setFallbackReason(result.getFallbackReason());
+        imageResult.setAttemptedMethods(result.getAttemptedMethods());
         return imageResult;
     }
 
-    /**
-     * 构建可用配图方式说明
-     */
+    private ImageGenerationTool.ImageGenerationResult buildImageWithFallback(ArticleState.ImageRequirement requirement,
+                                                                             List<String> enabledMethods) {
+        return imageGenerationTool.generateImageDirect(
+                requirement.getImageSource(),
+                requirement.getKeywords(),
+                requirement.getPrompt(),
+                requirement.getPosition(),
+                requirement.getType(),
+                requirement.getSectionTitle(),
+                requirement.getPlaceholderId(),
+                enabledMethods
+        );
+    }
+
+    private ArticleState.ImageFallbackRecord buildFallbackRecord(ArticleState.ImageRequirement requirement,
+                                                                 ImageGenerationTool.ImageGenerationResult result) {
+        ArticleState.ImageFallbackRecord record = new ArticleState.ImageFallbackRecord();
+        record.setPosition(requirement.getPosition());
+        record.setRequestedMethod(result.getRequestedMethod());
+        record.setFinalMethod(result.getMethod());
+        record.setFallbackApplied(result.getFallbackApplied());
+        record.setFallbackReason(result.getFallbackReason());
+        record.setAttemptedMethods(result.getAttemptedMethods());
+        record.setSectionTitle(requirement.getSectionTitle());
+        record.setPlaceholderId(requirement.getPlaceholderId());
+        return record;
+    }
+
+    private void recordImageFallbackObservability(ArticleState state,
+                                                  List<ArticleState.ImageFallbackRecord> fallbackRecords,
+                                                  NodeExecutionMetadata metadata) {
+        if (state == null || state.getTaskId() == null || fallbackRecords == null || fallbackRecords.isEmpty()) {
+            return;
+        }
+        List<ImageFallbackDecisionVO> decisions = fallbackRecords.stream()
+                .map(record -> ImageFallbackDecisionVO.builder()
+                        .requestedMethod(record.getRequestedMethod())
+                        .finalMethod(record.getFinalMethod())
+                        .fallbackApplied(record.getFallbackApplied())
+                        .fallbackReason(record.getFallbackReason())
+                        .attemptedMethods(record.getAttemptedMethods())
+                        .build())
+                .collect(Collectors.toList());
+        articleMemoryService.recordImageFallbackDecision(state.getTaskId(), state, decisions);
+        long fallbackCount = fallbackRecords.stream().filter(record -> Boolean.TRUE.equals(record.getFallbackApplied())).count();
+        if (fallbackCount <= 0) {
+            return;
+        }
+        String summary = fallbackRecords.stream()
+                .filter(record -> Boolean.TRUE.equals(record.getFallbackApplied()))
+                .limit(3)
+                .map(record -> record.getRequestedMethod() + "->" + record.getFinalMethod())
+                .collect(Collectors.joining(", "));
+        if (metadata != null) {
+            metadata.setFallbackSource("image_fallback_router");
+            metadata.setFallbackReason("image_generation_failed");
+            metadata.setFallbackSummary("count=" + fallbackCount + ", routes=" + summary);
+        }
+        articleNodeLogService.info(state.getTaskId(), "CONTENT_GENERATING", "agent5_generate_images",
+                "鍥剧墖闄嶇骇宸茶Е鍙戯細" + summary, metadata);
+    }
+
+    private void applyImageMemoryContextMetadata(NodeExecutionMetadata metadata,
+                                                 ArticleMemoryContextVO memoryContext,
+                                                 String scenario) {
+        if (metadata == null || memoryContext == null) {
+            return;
+        }
+        metadata.setMemoryContextSummary(buildImageMemoryContextSummary(memoryContext, scenario));
+        metadata.setMemoryContextSnapshot(buildImageMemoryContextSnapshot(memoryContext, scenario));
+    }
+
+    private String buildImageMemoryContextSummary(ArticleMemoryContextVO memoryContext, String scenario) {
+        if (memoryContext == null) {
+            return null;
+        }
+        int preferredCount = memoryContext.getPreferredImageMethods() == null ? 0 : memoryContext.getPreferredImageMethods().size();
+        int avoidCount = memoryContext.getAvoidImageMethods() == null ? 0 : memoryContext.getAvoidImageMethods().size();
+        int successCount = memoryContext.getRecalledSuccessCases() == null ? 0 : memoryContext.getRecalledSuccessCases().size();
+        int failureCount = memoryContext.getRecalledFailureCases() == null ? 0 : memoryContext.getRecalledFailureCases().size();
+        return "scenario=" + scenario
+                + ", preferredMethods=" + preferredCount
+                + ", avoidMethods=" + avoidCount
+                + ", successCases=" + successCount
+                + ", failureCases=" + failureCount;
+    }
+
+    private String buildImageMemoryContextSnapshot(ArticleMemoryContextVO memoryContext, String scenario) {
+        if (memoryContext == null) {
+            return null;
+        }
+        java.util.Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+        snapshot.put("scenario", scenario);
+        snapshot.put("preferredImageMethods", memoryContext.getPreferredImageMethods());
+        snapshot.put("avoidImageMethods", memoryContext.getAvoidImageMethods());
+        snapshot.put("failureHints", memoryContext.getFailureHints());
+        snapshot.put("successCases", summarizeMemoryCases(memoryContext.getRecalledSuccessCases()));
+        snapshot.put("failureCases", summarizeMemoryCases(memoryContext.getRecalledFailureCases()));
+        return GsonUtils.toJson(snapshot);
+    }
+
+    private void applyImageGenerationSummary(NodeExecutionMetadata metadata,
+                                             List<ArticleState.ImageResult> imageResults,
+                                             List<ArticleState.ImageFallbackRecord> fallbackRecords) {
+        if (metadata == null) {
+            return;
+        }
+        int imageCount = imageResults == null ? 0 : imageResults.size();
+        long fallbackCount = fallbackRecords == null ? 0 : fallbackRecords.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> Boolean.TRUE.equals(item.getFallbackApplied()))
+                .count();
+        String routeSummary = fallbackRecords == null ? null : fallbackRecords.stream()
+                .filter(Objects::nonNull)
+                .limit(3)
+                .map(item -> firstNonBlank(item.getRequestedMethod(), "--") + "->" + firstNonBlank(item.getFinalMethod(), "--"))
+                .collect(Collectors.joining(", "));
+        metadata.setDecisionSummary("generated=" + imageCount
+                + ", fallbackCount=" + fallbackCount
+                + (routeSummary == null || routeSummary.isBlank() ? "" : ", routes=" + routeSummary));
+    }
+
+    private void applyImageAnalyzerSummary(NodeExecutionMetadata metadata,
+                                           List<ArticleState.ImageRequirement> requirements,
+                                           List<String> enabledMethods) {
+        if (metadata == null) {
+            return;
+        }
+        int requirementCount = requirements == null ? 0 : requirements.size();
+        int enabledMethodCount = enabledMethods == null ? 0 : enabledMethods.size();
+        String firstSource = requirements == null ? null : requirements.stream()
+                .filter(Objects::nonNull)
+                .map(ArticleState.ImageRequirement::getImageSource)
+                .filter(StrUtil::isNotBlank)
+                .findFirst()
+                .orElse(null);
+        metadata.setDecisionSummary("requirements=" + requirementCount
+                + ", enabledMethods=" + enabledMethodCount
+                + (firstSource == null ? "" : ", firstSource=" + firstSource));
+    }
+
     private String buildAvailableMethodsDescription(List<String> enabledMethods) {
-        // 如果为空或 null，表示支持所有方式
         if (enabledMethods == null || enabledMethods.isEmpty()) {
             return getAllMethodsDescription();
         }
-
-        // 只描述允许的方式
         StringBuilder sb = new StringBuilder();
         for (String method : enabledMethods) {
             ImageMethodEnum methodEnum = ImageMethodEnum.getByValue(method);
             if (methodEnum != null && !methodEnum.isFallback()) {
-                sb.append("   - ").append(methodEnum.getValue())
-                        .append(": ").append(getMethodUsageDescription(methodEnum))
+                sb.append("- ")
+                        .append(methodEnum.getValue())
+                        .append(": ")
+                        .append(getMethodUsageDescription(methodEnum))
                         .append("\n");
             }
         }
         return sb.toString();
     }
 
-    /**
-     * 获取所有配图方式的完整描述
-     */
     private String getAllMethodsDescription() {
         return """
-               - PEXELS: 适合真实场景、产品照片、人物照片、自然风景等写实图片
-               - NANO_BANANA: 适合创意插画、信息图表、需要文字渲染、抽象概念、艺术风格等 AI 生成图片
-               - MERMAID: 适合流程图、架构图、时序图、关系图、甘特图等结构化图表
-               - ICONIFY: 适合图标、符号、小型装饰性图标（如：箭头、勾选、星星、心形等）
-               - EMOJI_PACK: 适合表情包、搞笑图片、轻松幽默的配图
-               - SVG_DIAGRAM: 适合概念示意图、思维导图样式、逻辑关系展示（不涉及精确数据）
-               """;
+                - PEXELS: realistic photos for scenes, people, products, and places
+                - NANO_BANANA: AI-generated illustrations or stylized visuals
+                - MERMAID: flowcharts, architecture diagrams, and sequence diagrams
+                - ICONIFY: icons and small decorative symbols
+                - EMOJI_PACK: meme-like or lightweight expressive images
+                - SVG_DIAGRAM: conceptual SVG diagrams and relationship maps
+                """;
     }
 
-    /**
-     * 获取配图方式的使用说明
-     */
     private String getMethodUsageDescription(ImageMethodEnum method) {
         return switch (method) {
-            case PEXELS -> "适合真实场景、产品照片、人物照片、自然风景等写实图片";
-            case NANO_BANANA -> "适合创意插画、信息图表、需要文字渲染、抽象概念、艺术风格等 AI 生成图片";
-            case MERMAID -> "适合流程图、架构图、时序图、关系图、甘特图等结构化图表";
-            case ICONIFY -> "适合图标、符号、小型装饰性图标（如：箭头、勾选、星星、心形等）";
-            case EMOJI_PACK -> "适合表情包、搞笑图片、轻松幽默的配图";
-            case SVG_DIAGRAM -> "适合概念示意图、思维导图样式、逻辑关系展示（不涉及精确数据）";
+            case PEXELS -> "realistic stock photos";
+            case NANO_BANANA -> "AI-generated illustration or concept art";
+            case MERMAID -> "structured diagrams using Mermaid code";
+            case ICONIFY -> "searchable icon assets";
+            case EMOJI_PACK -> "emoji or meme style pictures";
+            case SVG_DIAGRAM -> "conceptual SVG diagrams";
             default -> method.getDescription();
         };
     }
 
-    /**
-     * 构建配图方式的详细使用指南（只包含允许的方式）
-     */
     private String buildMethodUsageGuide(List<String> enabledMethods) {
-        // 如果没有限制，返回所有方式的使用指南
         List<String> methodsToInclude = (enabledMethods == null || enabledMethods.isEmpty())
                 ? List.of("PEXELS", "NANO_BANANA", "MERMAID", "ICONIFY", "EMOJI_PACK", "SVG_DIAGRAM")
                 : enabledMethods;
 
         StringBuilder sb = new StringBuilder();
-        
         for (String method : methodsToInclude) {
             String guide = getMethodDetailedGuide(method);
             if (guide != null && !guide.isEmpty()) {
                 sb.append(guide).append("\n");
             }
         }
-        
         return sb.toString();
     }
 
-    /**
-     * 获取单个配图方式的详细使用指南
-     */
     private String getMethodDetailedGuide(String method) {
         return switch (method) {
-            case "PEXELS" -> """
-                    - PEXELS: 提供英文搜索关键词(keywords)，要准确、具体。prompt 留空。""";
-            case "NANO_BANANA" -> """
-                    - NANO_BANANA: 提供详细的英文生图提示词(prompt)，描述场景、风格、细节。keywords 留空。""";
-            case "MERMAID" -> """
-                    - MERMAID: 在 prompt 字段生成完整的 Mermaid 代码（如流程图、架构图）。keywords 留空。""";
-            case "ICONIFY" -> """
-                    - ICONIFY: 提供英文图标关键词(keywords)，如：check、arrow、star、heart。prompt 留空。""";
-            case "EMOJI_PACK" -> """
-                    - EMOJI_PACK: 提供中文或英文关键词(keywords)描述表情内容。prompt 留空。系统会自动添加"表情包"搜索。""";
-            case "SVG_DIAGRAM" -> """
-                    - SVG_DIAGRAM: 在 prompt 字段描述示意图需求（中文），说明要表达的概念和关系。keywords 留空。
-                      示例：绘制思维导图样式的图，中心是"自律"，周围4个分支：习惯、环境、反馈、系统""";
+            case "PEXELS" -> "- PEXELS: provide concise English search keywords; leave prompt empty.";
+            case "NANO_BANANA" -> "- NANO_BANANA: provide a detailed English image prompt; keywords can be empty.";
+            case "MERMAID" -> "- MERMAID: write full Mermaid code in prompt; keywords can be empty.";
+            case "ICONIFY" -> "- ICONIFY: provide concise icon keywords such as check, arrow, star, heart.";
+            case "EMOJI_PACK" -> "- EMOJI_PACK: provide meme or emoji search keywords.";
+            case "SVG_DIAGRAM" -> "- SVG_DIAGRAM: describe the conceptual diagram in prompt, focusing on structure and relationships.";
             default -> null;
         };
     }
 
-    /**
-     * 验证并过滤配图需求
-     * 确保所有 imageSource 都在允许列表中
-     *
-     * @param requirements    原始配图需求列表
-     * @param enabledMethods  允许的配图方式列表
-     * @return 验证后的配图需求列表
-     */
     private List<ArticleState.ImageRequirement> validateAndFilterImageRequirements(
             List<ArticleState.ImageRequirement> requirements,
             List<String> enabledMethods) {
-        
-        // 如果没有限制，返回所有需求
+        if (requirements == null || requirements.isEmpty()) {
+            return new ArrayList<>();
+        }
         if (enabledMethods == null || enabledMethods.isEmpty()) {
             return requirements;
         }
-        
+
         List<ArticleState.ImageRequirement> validatedRequirements = new ArrayList<>();
-        
-        for (ArticleState.ImageRequirement req : requirements) {
-            String imageSource = req.getImageSource();
-            
-            // 验证 imageSource 是否在允许列表中
+        for (ArticleState.ImageRequirement requirement : requirements) {
+            String imageSource = requirement.getImageSource();
             if (enabledMethods.contains(imageSource)) {
-                validatedRequirements.add(req);
-                log.debug("配图需求验证通过, position={}, imageSource={}", req.getPosition(), imageSource);
-            } else {
-                log.warn("配图需求不符合限制被过滤, position={}, imageSource={}, enabledMethods={}", 
-                        req.getPosition(), imageSource, enabledMethods);
-                
-                // 尝试替换为允许的方式（优先使用第一个允许的方式）
-                if (!enabledMethods.isEmpty()) {
-                    String fallbackSource = enabledMethods.get(0);
-                    req.setImageSource(fallbackSource);
-                    validatedRequirements.add(req);
-                    log.info("配图需求已替换为允许的方式, position={}, fallback={}", 
-                            req.getPosition(), fallbackSource);
-                }
+                validatedRequirements.add(requirement);
+            } else if (!enabledMethods.isEmpty()) {
+                String fallbackSource = enabledMethods.get(0);
+                requirement.setImageSource(fallbackSource);
+                validatedRequirements.add(requirement);
+                log.info("Image requirement source replaced, position={}, fallback={}",
+                        requirement.getPosition(), fallbackSource);
             }
         }
-        
         return validatedRequirements;
     }
 
-    /**
-     * 根据风格获取对应的 Prompt 附加内容
-     *
-     * @param style 文章风格
-     * @return 风格对应的 Prompt 附加内容，如果无风格则返回空字符串
-     */
-    private String getStylePrompt(String style) {
-        if (style == null || style.isEmpty()) {
-            return "";
-        }
-        
-        ArticleStyleEnum styleEnum = ArticleStyleEnum.getEnumByValue(style);
-        if (styleEnum == null) {
-            return "";
-        }
-        
-        return switch (styleEnum) {
-            case TECH -> PromptConstant.STYLE_TECH_PROMPT;
-            case EMOTIONAL -> PromptConstant.STYLE_EMOTIONAL_PROMPT;
-            case EDUCATIONAL -> PromptConstant.STYLE_EDUCATIONAL_PROMPT;
-            case HUMOROUS -> PromptConstant.STYLE_HUMOROUS_PROMPT;
-        };
-    }
-
-    /**
-     * AI 修改大纲
-     *
-     * @param mainTitle        主标题
-     * @param subTitle         副标题
-     * @param currentOutline   当前大纲
-     * @param modifySuggestion 用户修改建议
-     * @return 修改后的大纲
-     */
-    @AgentExecution(value = "ai_modify_outline", description = "AI修改大纲")
-    public List<ArticleState.OutlineSection> aiModifyOutline(String mainTitle, String subTitle, 
+    @AgentExecution(value = "ai_modify_outline", description = "AI淇敼澶х翰")
+    public List<ArticleState.OutlineSection> aiModifyOutline(String mainTitle, String subTitle,
                                                              List<ArticleState.OutlineSection> currentOutline,
-                                                             String modifySuggestion) {
+                                                             String modifySuggestion,
+                                                             NodeExecutionMetadata metadata) {
+        AgentProfile profile = resolveProfile(OUTLINE_PROFILE, "ai_modify_outline", false, true);
         String currentOutlineJson = GsonUtils.toJson(currentOutline);
-        
-        String prompt = PromptConstant.AI_MODIFY_OUTLINE_PROMPT
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{mainTitle}", mainTitle)
                 .replace("{subTitle}", subTitle)
                 .replace("{currentOutline}", currentOutlineJson)
                 .replace("{modifySuggestion}", modifySuggestion);
 
-        String content = callLlm(prompt);
-        ArticleState.OutlineResult outlineResult = parseJsonResponse(content, ArticleState.OutlineResult.class, "修改后的大纲");
-        
-        log.info("AI修改大纲成功, sectionsCount={}", outlineResult.getSections().size());
+        ArticleState.OutlineResult outlineResult = articleStructuredOutputService.execute(
+                promptContent,
+                "modifiedOutline",
+                prompt -> callLlm(prompt, profile),
+                ArticleState.OutlineResult.class,
+                this::isValidOutlineResult
+        );
+        log.info("AI outline modified, sectionsCount={}, model={}, promptKey={}, promptVersion={}",
+                outlineResult.getSections().size(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
         return outlineResult.getSections();
     }
 
-    /**
-     * 获取当前类的代理对象
-     * 用于解决 Spring AOP 同类方法调用代理失效问题
-     */
+    public List<ArticleState.OutlineSection> aiModifyOutline(String mainTitle, String subTitle,
+                                                             List<ArticleState.OutlineSection> currentOutline,
+                                                             String modifySuggestion) {
+        return getProxy().aiModifyOutline(mainTitle, subTitle, currentOutline, modifySuggestion,
+                buildMetadataForProfile(OUTLINE_PROFILE, "ai_modify_outline", false, true));
+    }
+
+    private AgentProfile resolveProfile(String profileName,
+                                        String defaultPromptKey,
+                                        boolean defaultStreaming,
+                                        boolean defaultStructuredOutput) {
+        return agentPromptSupport.resolveProfile(profileName, defaultPromptKey, defaultStreaming, defaultStructuredOutput);
+    }
+
+    private NodeExecutionMetadata buildMetadataForProfile(String profileName,
+                                                          String defaultPromptKey,
+                                                          boolean defaultStreaming,
+                                                          boolean defaultStructuredOutput) {
+        return agentPromptSupport.toMetadata(resolveProfile(profileName, defaultPromptKey, defaultStreaming, defaultStructuredOutput));
+    }
+
+    private NodeExecutionMetadata buildImageRouterMetadata() {
+        return NodeExecutionMetadata.builder()
+                .promptKey("image_strategy_router")
+                .promptVersion("rule-v1")
+                .model("rule-engine")
+                .temperature(0D)
+                .maxTokens(0)
+                .topP(0D)
+                .build();
+    }
+
+    private NodeExecutionMetadata buildImageGenerationMetadata() {
+        return NodeExecutionMetadata.builder()
+                .promptKey("image_fallback_router")
+                .promptVersion("rule-v1")
+                .model("tool-router")
+                .temperature(0D)
+                .maxTokens(0)
+                .topP(0D)
+                .build();
+    }
+
+    private boolean isValidTitleOptions(List<ArticleState.TitleOption> titleOptions) {
+        if (titleOptions == null || titleOptions.size() < 3 || titleOptions.size() > 5) {
+            return false;
+        }
+        return titleOptions.stream().allMatch(option -> option != null
+                && isNotBlank(option.getMainTitle())
+                && isNotBlank(option.getSubTitle()));
+    }
+
+    private boolean isValidOutlineResult(ArticleState.OutlineResult outlineResult) {
+        if (outlineResult == null || outlineResult.getSections() == null || outlineResult.getSections().isEmpty()) {
+            return false;
+        }
+        return outlineResult.getSections().stream().allMatch(section -> section != null
+                && section.getSection() != null
+                && isNotBlank(section.getTitle())
+                && section.getPoints() != null
+                && !section.getPoints().isEmpty());
+    }
+
+    private boolean isValidAgent4Result(ArticleState.Agent4Result result) {
+        return result != null
+                && isNotBlank(result.getContentWithPlaceholders())
+                && result.getImageRequirements() != null;
+    }
+
+    private boolean isValidContentReviewResult(ArticleState.ContentReviewResult result) {
+        return result != null && isNotBlank(result.getRevisedContent());
+    }
+
+    private void applyContentReviewMetadata(NodeExecutionMetadata metadata,
+                                            ArticleState.ContentReviewResult reviewResult,
+                                            ArticleMemoryContextVO memoryContext) {
+        if (metadata == null || reviewResult == null) {
+            return;
+        }
+        boolean memoryUsed = memoryContext != null
+                && ((memoryContext.getQualityHints() != null && !memoryContext.getQualityHints().isEmpty())
+                || (memoryContext.getFailureHints() != null && !memoryContext.getFailureHints().isEmpty()));
+        metadata.setDecisionSource(Boolean.TRUE.equals(reviewResult.getNeedsRevision())
+                ? (memoryUsed ? "content_reviewer_with_memory" : "content_reviewer")
+                : (memoryUsed ? "content_reviewer_keep_with_memory" : "content_reviewer_keep"));
+        metadata.setDecisionReason(appendMemoryReason(joinReviewSignals(reviewResult), memoryContext));
+        metadata.setDecisionSummary(buildReviewDecisionSummary(reviewResult, memoryContext));
+    }
+
+    private String joinReviewSignals(ArticleState.ContentReviewResult reviewResult) {
+        if (reviewResult == null) {
+            return null;
+        }
+        List<String> signals = new ArrayList<>();
+        if (reviewResult.getIssues() != null) {
+            signals.addAll(reviewResult.getIssues());
+        }
+        if (reviewResult.getQualitySignals() != null) {
+            signals.addAll(reviewResult.getQualitySignals());
+        }
+        return signals.isEmpty() ? null : String.join("|", signals);
+    }
+
+    private String buildReviewMemoryHints(ArticleMemoryContextVO memoryContext) {
+        if (memoryContext == null) {
+            return "";
+        }
+        List<String> qualityHints = memoryContext.getQualityHints();
+        List<String> failureHints = memoryContext.getFailureHints();
+        List<ArticleMemoryContextVO.RecalledMemoryCaseVO> successCases = memoryContext.getRecalledSuccessCases();
+        List<ArticleMemoryContextVO.RecalledMemoryCaseVO> failureCases = memoryContext.getRecalledFailureCases();
+        if ((qualityHints == null || qualityHints.isEmpty())
+                && (failureHints == null || failureHints.isEmpty())
+                && (successCases == null || successCases.isEmpty())
+                && (failureCases == null || failureCases.isEmpty())) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        builder.append("\n\n闀挎湡璁板繂鎻愮ず锛歕n");
+        if (qualityHints != null && !qualityHints.isEmpty()) {
+            builder.append("- 鍘嗗彶鎴愬姛璐ㄩ噺淇″彿锛?).append(String.join(", ", qualityHints)).append("\n");
+        }
+        if (failureHints != null && !failureHints.isEmpty()) {
+            builder.append("- 鍘嗗彶澶辫触鎻愰啋锛?).append(String.join(", ", failureHints)).append("\n");
+        }
+        if (successCases != null && !successCases.isEmpty()) {
+            builder.append("- 鐩镐技鎴愬姛妗堜緥锛?);
+            builder.append(successCases.stream()
+                    .limit(2)
+                    .map(item -> firstNonBlank(item.getSummary(), item.getTopic()))
+                    .collect(Collectors.joining("锛?)));
+            builder.append("\n");
+        }
+        if (failureCases != null && !failureCases.isEmpty()) {
+            builder.append("- 鐩镐技澶辫触妗堜緥锛?);
+            builder.append(failureCases.stream()
+                    .limit(2)
+                    .map(item -> firstNonBlank(item.getFailedNode(), firstNonBlank(item.getSummary(), item.getTopic())))
+                    .collect(Collectors.joining("锛?)));
+            builder.append("\n");
+        }
+        builder.append("璇峰皢杩欎簺鎻愮ず浣滀负杞婚噺绾︽潫锛屽彧鍦ㄥ繀瑕佹椂鍋氭渶灏忎慨璁紝涓嶈鍥犱负鍘嗗彶鎻愮ず鑰岄噸鍐欐暣绡囨枃绔犮€?);
+        return builder.toString();
+    }
+
+    private String appendMemoryReason(String baseReason, ArticleMemoryContextVO memoryContext) {
+        if (memoryContext == null) {
+            return baseReason;
+        }
+        List<String> memorySignals = new ArrayList<>();
+        if (memoryContext.getQualityHints() != null && !memoryContext.getQualityHints().isEmpty()) {
+            memorySignals.add("qualityHints=" + memoryContext.getQualityHints().size());
+        }
+        if (memoryContext.getFailureHints() != null && !memoryContext.getFailureHints().isEmpty()) {
+            memorySignals.add("failureHints=" + memoryContext.getFailureHints().size());
+        }
+        if (memorySignals.isEmpty()) {
+            return baseReason;
+        }
+        String memoryReason = String.join("|", memorySignals);
+        if (baseReason == null || baseReason.isBlank()) {
+            return memoryReason;
+        }
+        return baseReason + "|" + memoryReason;
+    }
+
+    private String buildReviewDecisionSummary(ArticleState.ContentReviewResult reviewResult,
+                                              ArticleMemoryContextVO memoryContext) {
+        String reviewSummary = reviewResult == null ? null : reviewResult.getSummary();
+        if (memoryContext == null) {
+            return reviewSummary;
+        }
+        int qualityCount = memoryContext.getQualityHints() == null ? 0 : memoryContext.getQualityHints().size();
+        int failureCount = memoryContext.getFailureHints() == null ? 0 : memoryContext.getFailureHints().size();
+        String memorySummary = "memoryHints=" + qualityCount + "/" + failureCount;
+        if (reviewSummary == null || reviewSummary.isBlank()) {
+            return memorySummary;
+        }
+        return reviewSummary + " | " + memorySummary;
+    }
+
+    private void applyReviewMemoryContextMetadata(NodeExecutionMetadata metadata,
+                                                  ArticleMemoryContextVO memoryContext) {
+        if (metadata == null || memoryContext == null) {
+            return;
+        }
+        metadata.setMemoryContextSummary(buildMemoryContextSummary(memoryContext));
+        metadata.setMemoryContextSnapshot(buildMemoryContextSnapshot(memoryContext));
+    }
+
+    private String buildMemoryContextSummary(ArticleMemoryContextVO memoryContext) {
+        if (memoryContext == null) {
+            return null;
+        }
+        int qualityCount = memoryContext.getQualityHints() == null ? 0 : memoryContext.getQualityHints().size();
+        int failureCount = memoryContext.getFailureHints() == null ? 0 : memoryContext.getFailureHints().size();
+        int successCount = memoryContext.getRecalledSuccessCases() == null ? 0 : memoryContext.getRecalledSuccessCases().size();
+        int failedCount = memoryContext.getRecalledFailureCases() == null ? 0 : memoryContext.getRecalledFailureCases().size();
+        return "qualityHints=" + qualityCount
+                + ", failureHints=" + failureCount
+                + ", successCases=" + successCount
+                + ", failureCases=" + failedCount;
+    }
+
+    private String buildMemoryContextSnapshot(ArticleMemoryContextVO memoryContext) {
+        if (memoryContext == null) {
+            return null;
+        }
+        java.util.Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+        snapshot.put("preferredImageMethods", memoryContext.getPreferredImageMethods());
+        snapshot.put("avoidImageMethods", memoryContext.getAvoidImageMethods());
+        snapshot.put("qualityHints", memoryContext.getQualityHints());
+        snapshot.put("failureHints", memoryContext.getFailureHints());
+        snapshot.put("successCases", summarizeMemoryCases(memoryContext.getRecalledSuccessCases()));
+        snapshot.put("failureCases", summarizeMemoryCases(memoryContext.getRecalledFailureCases()));
+        return GsonUtils.toJson(snapshot);
+    }
+
+    private List<java.util.Map<String, Object>> summarizeMemoryCases(List<ArticleMemoryContextVO.RecalledMemoryCaseVO> cases) {
+        if (cases == null || cases.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        List<java.util.Map<String, Object>> result = new ArrayList<>();
+        for (ArticleMemoryContextVO.RecalledMemoryCaseVO item : cases.stream().limit(3).collect(Collectors.toList())) {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("taskId", item.getTaskId());
+            map.put("style", item.getStyle());
+            map.put("summary", item.getSummary());
+            map.put("failedNode", item.getFailedNode());
+            map.put("imageMethods", item.getImageMethods());
+            map.put("score", item.getScore());
+            result.add(map);
+        }
+        return result;
+    }
+
+    private String firstNonBlank(String preferred, String fallback) {
+        return preferred != null && !preferred.isBlank() ? preferred : fallback;
+    }
+
+    private boolean isNotBlank(String value) {
+        return value != null && !value.isBlank();
+    }
+
     private ArticleAgentService getProxy() {
         try {
             return (ArticleAgentService) AopContext.currentProxy();
         } catch (IllegalStateException e) {
-            // 如果获取代理失败，返回 this（降级处理）
-            log.warn("获取 AOP 代理对象失败，使用原始对象: {}", e.getMessage());
+            log.warn("Falling back to direct invocation because AOP proxy is unavailable: {}", e.getMessage());
             return this;
         }
     }
-
-    // endregion
 }
+

@@ -1,15 +1,61 @@
-// @ts-ignore
+﻿// @ts-ignore
 /* eslint-disable */
 import request from '@/request'
 
 /** 获取文章详情 GET /article/${param0} */
 export async function getArticle(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getArticleParams,
   options?: { [key: string]: any }
 ) {
   const { taskId: param0, ...queryParams } = params
   return request<API.BaseResponseArticleVO>(`/article/${param0}`, {
+    method: 'GET',
+    params: { ...queryParams },
+    ...(options || {}),
+  })
+}
+
+/** 获取任务快照 GET /article/snapshot/${param0} */
+export async function getTaskSnapshot(
+  params: API.getTaskSnapshotParams,
+  options?: { [key: string]: any }
+) {
+  const { taskId: param0, ...queryParams } = params
+  return request<API.BaseResponseArticleTaskSnapshotVO>(`/article/snapshot/${param0}`, {
+    method: 'GET',
+    params: { ...queryParams },
+    ...(options || {}),
+  })
+}
+
+/** 获取任务级记忆 GET /article/task-memory/${param0} */
+export async function getTaskMemory(
+  params: API.getTaskMemoryParams,
+  options?: { [key: string]: any }
+) {
+  const { taskId: param0, ...queryParams } = params
+  return request<API.BaseResponseArticleTaskMemoryVO>(`/article/task-memory/${param0}`, {
+    method: 'GET',
+    params: { ...queryParams },
+    ...(options || {}),
+  })
+}
+
+/** 获取当前用户创作偏好 GET /article/user-preference */
+export async function getUserCreationPreference(options?: { [key: string]: any }) {
+  return request<API.BaseResponseUserCreationPreferenceVO>('/article/user-preference', {
+    method: 'GET',
+    ...(options || {}),
+  })
+}
+
+/** 获取节点回放快照 GET /article/node-replay/${param0} */
+export async function getNodeReplaySnapshots(
+  params: API.getNodeReplaySnapshotsParams,
+  options?: { [key: string]: any }
+) {
+  const { taskId: param0, ...queryParams } = params
+  return request<API.BaseResponseListNodeReplaySnapshotVO>(`/article/node-replay/${param0}`, {
     method: 'GET',
     params: { ...queryParams },
     ...(options || {}),
@@ -46,7 +92,7 @@ export async function confirmOutline(
   })
 }
 
-/** 确认标题并输入补充描述 POST /article/confirm-title */
+/** 确认标题 POST /article/confirm-title */
 export async function confirmTitle(
   body: API.ArticleConfirmTitleRequest,
   options?: { [key: string]: any }
@@ -76,6 +122,36 @@ export async function createArticle(
   })
 }
 
+/** 恢复或重试任务 POST /article/resume */
+export async function resumeTask(
+  body: API.ArticleResumeRequest,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseArticleTaskSnapshotVO>('/article/resume', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  })
+}
+
+/** 重试失败节点 POST /article/retry-node */
+export async function retryNode(
+  body: API.ArticleRetryNodeRequest,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseArticleTaskSnapshotVO>('/article/retry-node', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  })
+}
+
 /** 删除文章 POST /article/delete */
 export async function deleteArticle(body: API.DeleteRequest, options?: { [key: string]: any }) {
   return request<API.BaseResponseBoolean>('/article/delete', {
@@ -90,7 +166,6 @@ export async function deleteArticle(body: API.DeleteRequest, options?: { [key: s
 
 /** 获取任务执行日志 GET /article/execution-logs/${param0} */
 export async function getExecutionLogs(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getExecutionLogsParams,
   options?: { [key: string]: any }
 ) {
@@ -116,7 +191,6 @@ export async function listArticle(body: API.ArticleQueryRequest, options?: { [ke
 
 /** 获取文章生成进度(SSE) GET /article/progress/${param0} */
 export async function getProgress(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getProgressParams,
   options?: { [key: string]: any }
 ) {

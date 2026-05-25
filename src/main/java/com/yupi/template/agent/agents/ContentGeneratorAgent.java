@@ -3,15 +3,13 @@ package com.yupi.template.agent.agents;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
+import com.yupi.template.agent.config.AgentProfile;
 import com.yupi.template.agent.context.StreamHandlerContext;
-import com.yupi.template.constant.PromptConstant;
 import com.yupi.template.model.dto.article.ArticleState;
-import com.yupi.template.model.enums.ArticleStyleEnum;
 import com.yupi.template.model.enums.SseMessageTypeEnum;
 import com.yupi.template.utils.GsonUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
@@ -21,17 +19,17 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * 正文生成 Agent
- * 根据大纲生成文章正文内容（支持流式输出）
- *
- * @author AI Passage Creator
+ * 正文生成 Agent。
  */
 @Component
 @Slf4j
 @RequiredArgsConstructor
 public class ContentGeneratorAgent implements NodeAction {
 
+    private static final String PROFILE_NAME = "content-generator";
+
     private final DashScopeChatModel chatModel;
+    private final AgentPromptSupport agentPromptSupport;
 
     public static final String INPUT_MAIN_TITLE = "mainTitle";
     public static final String INPUT_SUB_TITLE = "subTitle";
@@ -40,93 +38,65 @@ public class ContentGeneratorAgent implements NodeAction {
     public static final String OUTPUT_CONTENT = "content";
 
     @Override
-    public Map<String, Object> apply(OverAllState state) throws Exception {
+    public Map<String, Object> apply(OverAllState state) {
         String mainTitle = state.value(INPUT_MAIN_TITLE)
                 .map(Object::toString)
                 .orElseThrow(() -> new IllegalArgumentException("缺少主标题参数"));
-        
+
         String subTitle = state.value(INPUT_SUB_TITLE)
                 .map(Object::toString)
                 .orElse("");
-        
-        @SuppressWarnings("unchecked")
+
         ArticleState.OutlineResult outline = state.value(INPUT_OUTLINE)
                 .map(v -> {
-                    if (v instanceof ArticleState.OutlineResult) {
-                        return (ArticleState.OutlineResult) v;
+                    if (v instanceof ArticleState.OutlineResult result) {
+                        return result;
                     }
                     return GsonUtils.fromJson(GsonUtils.toJson(v), ArticleState.OutlineResult.class);
                 })
                 .orElseThrow(() -> new IllegalArgumentException("缺少大纲参数"));
-        
+
         String style = state.value(INPUT_STYLE)
                 .map(Object::toString)
                 .orElse(null);
-        
-        log.info("ContentGeneratorAgent 开始执行: mainTitle={}", mainTitle);
-        
-        // 构建 prompt
+
+        AgentProfile profile = agentPromptSupport.resolveProfile(PROFILE_NAME, "agent3_content", true, false);
         String outlineText = GsonUtils.toJson(outline.getSections());
-        String prompt = PromptConstant.AGENT3_CONTENT_PROMPT
+        String promptContent = agentPromptSupport.getPromptContent(profile.getPromptKey(), profile.getPromptVersion())
                 .replace("{mainTitle}", mainTitle)
                 .replace("{subTitle}", subTitle)
                 .replace("{outline}", outlineText)
-                + getStylePrompt(style);
-        
-        // 获取流式处理器
+                + agentPromptSupport.getStylePrompt(style);
+
+        log.info("ContentGeneratorAgent started, mainTitle={}, model={}, promptKey={}, promptVersion={}",
+                mainTitle, profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
+
         Consumer<String> streamHandler = StreamHandlerContext.get();
-        
-        // 调用 LLM（流式输出）
-        String content = callLlmWithStreaming(prompt, streamHandler);
-        
-        log.info("ContentGeneratorAgent 执行完成: 正文长度={}", content.length());
-        
+        String content = callLlmWithStreaming(promptContent, profile, streamHandler);
+
+        log.info("ContentGeneratorAgent finished, contentLength={}", content.length());
+
         return Map.of(OUTPUT_CONTENT, content);
     }
 
-    /**
-     * 调用 LLM（流式输出）
-     */
-    private String callLlmWithStreaming(String prompt, Consumer<String> streamHandler) {
+    private String callLlmWithStreaming(String promptContent, AgentProfile profile, Consumer<String> streamHandler) {
         StringBuilder contentBuilder = new StringBuilder();
-        
-        Flux<ChatResponse> streamResponse = chatModel.stream(new Prompt(new UserMessage(prompt)));
-        
+        Prompt prompt = agentPromptSupport.buildPrompt(promptContent, profile, true);
+        Flux<ChatResponse> streamResponse = chatModel.stream(prompt);
+
         streamResponse
                 .doOnNext(response -> {
                     String chunk = response.getResult().getOutput().getText();
                     if (chunk != null && !chunk.isEmpty()) {
                         contentBuilder.append(chunk);
-                        // 带前缀发送流式消息
                         if (streamHandler != null) {
                             streamHandler.accept(SseMessageTypeEnum.AGENT3_STREAMING.getStreamingPrefix() + chunk);
                         }
                     }
                 })
-                .doOnError(error -> log.error("ContentGeneratorAgent 流式调用失败", error))
+                .doOnError(error -> log.error("ContentGeneratorAgent streaming call failed", error))
                 .blockLast();
-        
-        return contentBuilder.toString();
-    }
 
-    /**
-     * 根据风格获取对应的 Prompt 附加内容
-     */
-    private String getStylePrompt(String style) {
-        if (style == null || style.isEmpty()) {
-            return "";
-        }
-        
-        ArticleStyleEnum styleEnum = ArticleStyleEnum.getEnumByValue(style);
-        if (styleEnum == null) {
-            return "";
-        }
-        
-        return switch (styleEnum) {
-            case TECH -> PromptConstant.STYLE_TECH_PROMPT;
-            case EMOTIONAL -> PromptConstant.STYLE_EMOTIONAL_PROMPT;
-            case EDUCATIONAL -> PromptConstant.STYLE_EDUCATIONAL_PROMPT;
-            case HUMOROUS -> PromptConstant.STYLE_HUMOROUS_PROMPT;
-        };
+        return contentBuilder.toString();
     }
 }

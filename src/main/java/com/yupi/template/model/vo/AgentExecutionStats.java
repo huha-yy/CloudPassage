@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 智能体执行统计 VO
+ * 智能体与节点执行统计 VO。
  *
  * @author <a href="XXXX">呼哈设计</a>
  */
@@ -23,33 +23,21 @@ public class AgentExecutionStats implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /**
-     * 任务ID
-     */
     private String taskId;
 
-    /**
-     * 总耗时（毫秒）
-     */
     private Integer totalDurationMs;
 
-    /**
-     * 智能体数量
-     */
     private Integer agentCount;
 
-    /**
-     * 各智能体耗时（key: agentName, value: durationMs）
-     */
     private Map<String, Integer> agentDurations;
 
-    /**
-     * 总体状态：SUCCESS（全部成功）、FAILED（存在失败）、RUNNING（执行中）
-     */
+    private Integer nodeCount;
+
+    private Map<String, Integer> nodeDurations;
+
     private String overallStatus;
 
-    /**
-     * 详细日志列表
-     */
     private List<AgentLog> logs;
+
+    private List<NodeExecutionLogVO> nodeLogs;
 }

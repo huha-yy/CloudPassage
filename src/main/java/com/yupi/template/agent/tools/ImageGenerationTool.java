@@ -2,6 +2,8 @@ package com.yupi.template.agent.tools;
 
 import com.yupi.template.model.dto.image.ImageRequest;
 import com.yupi.template.model.enums.ImageMethodEnum;
+import com.yupi.template.model.vo.ImageFallbackDecisionVO;
+import com.yupi.template.service.ImageFallbackRouterService;
 import com.yupi.template.service.CosService;
 import com.yupi.template.service.ImageServiceStrategy;
 import com.yupi.template.utils.GsonUtils;
@@ -13,6 +15,8 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.Resource;
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 图片生成工具
@@ -29,6 +33,9 @@ public class ImageGenerationTool {
 
     @Resource
     private CosService cosService;
+
+    @Resource
+    private ImageFallbackRouterService imageFallbackRouterService;
 
     /**
      * 根据需求生成或搜索图片
@@ -109,45 +116,138 @@ public class ImageGenerationTool {
      * @return 图片生成结果
      */
     public ImageGenerationResult generateImageDirect(String imageSource, String keywords, String prompt,
-                                                      Integer position, String type, String sectionTitle,
-                                                      String placeholderId) {
+                                                     Integer position, String type, String sectionTitle,
+                                                     String placeholderId) {
+        return generateImageDirect(imageSource, keywords, prompt, position, type, sectionTitle, placeholderId, null);
+    }
+
+    public ImageGenerationResult generateImageDirect(String imageSource, String keywords, String prompt,
+                                                     Integer position, String type, String sectionTitle,
+                                                     String placeholderId, List<String> enabledMethods) {
+        ImageRequest imageRequest = ImageRequest.builder()
+                .keywords(keywords)
+                .prompt(prompt)
+                .position(position)
+                .type(type)
+                .build();
+        List<String> attemptedMethods = new ArrayList<>();
+        String requestedMethod = imageSource;
+
         try {
-            ImageRequest imageRequest = ImageRequest.builder()
-                    .keywords(keywords)
-                    .prompt(prompt)
-                    .position(position)
-                    .type(type)
-                    .build();
-            
-            // 使用统一上传到 COS 的方法
-            ImageServiceStrategy.ImageResult result = imageServiceStrategy.getImageAndUpload(imageSource, imageRequest);
-            String cosUrl = result.getUrl();
-            ImageMethodEnum method = result.getMethod();
-            
-            ImageGenerationResult generationResult = new ImageGenerationResult();
-            generationResult.setPosition(position);
-            generationResult.setUrl(cosUrl);
-            generationResult.setMethod(method.getValue());
-            generationResult.setKeywords(keywords);
-            generationResult.setSectionTitle(sectionTitle);
-            generationResult.setDescription(type);
-            generationResult.setPlaceholderId(placeholderId);
-            generationResult.setSuccess(true);
-            
-            return generationResult;
-            
+            ImageFallbackDecisionVO fallbackDecision = imageFallbackRouterService.route(
+                    buildRequirement(imageSource, keywords, prompt, position, type, sectionTitle, placeholderId),
+                    enabledMethods
+            );
+            List<String> routeMethods = fallbackDecision == null || fallbackDecision.getAttemptedMethods() == null
+                    || fallbackDecision.getAttemptedMethods().isEmpty()
+                    ? List.of(imageSource)
+                    : fallbackDecision.getAttemptedMethods();
+
+            Exception lastException = null;
+            for (String candidateMethod : routeMethods) {
+                attemptedMethods.add(candidateMethod);
+                try {
+                    ImageServiceStrategy.ImageResult result = imageServiceStrategy.tryGetImageAndUpload(candidateMethod, imageRequest);
+                    if (result != null && result.isSuccess()) {
+                        return buildSuccessResult(position, keywords, type, sectionTitle, placeholderId, requestedMethod,
+                                attemptedMethods, fallbackDecision, result);
+                    }
+                } catch (Exception e) {
+                    lastException = e;
+                    log.warn("图片候选方法执行失败: requestedMethod={}, candidateMethod={}, position={}, error={}",
+                            requestedMethod, candidateMethod, position, e.getMessage());
+                }
+            }
+
+            ImageGenerationResult failResult = new ImageGenerationResult();
+            failResult.setPosition(position);
+            failResult.setSuccess(false);
+            failResult.setError(lastException == null ? "image_generation_failed" : lastException.getMessage());
+            failResult.setSectionTitle(sectionTitle);
+            failResult.setPlaceholderId(placeholderId);
+            failResult.setRequestedMethod(requestedMethod);
+            failResult.setAttemptedMethods(attemptedMethods);
+            failResult.setFallbackApplied(attemptedMethods.size() > 1);
+            failResult.setFallbackReason(fallbackDecision == null ? "fallback_route_exhausted" : fallbackDecision.getFallbackReason());
+            return applyTerminalFallback(imageRequest, failResult);
         } catch (Exception e) {
             log.error("图片生成失败: imageSource={}, position={}", imageSource, position, e);
-            
+
             ImageGenerationResult failResult = new ImageGenerationResult();
             failResult.setPosition(position);
             failResult.setSuccess(false);
             failResult.setError(e.getMessage());
             failResult.setSectionTitle(sectionTitle);
             failResult.setPlaceholderId(placeholderId);
-            
-            return failResult;
+            failResult.setRequestedMethod(requestedMethod);
+            failResult.setAttemptedMethods(attemptedMethods);
+            failResult.setFallbackApplied(attemptedMethods.size() > 1);
+            failResult.setFallbackReason("image_generation_exception");
+            return applyTerminalFallback(imageRequest, failResult);
         }
+    }
+
+    private ImageGenerationResult buildSuccessResult(Integer position, String keywords, String type, String sectionTitle,
+                                                     String placeholderId, String requestedMethod,
+                                                     List<String> attemptedMethods,
+                                                     ImageFallbackDecisionVO fallbackDecision,
+                                                     ImageServiceStrategy.ImageResult result) {
+        String cosUrl = result.getUrl();
+        ImageMethodEnum method = result.getMethod();
+
+        ImageGenerationResult generationResult = new ImageGenerationResult();
+        generationResult.setPosition(position);
+        generationResult.setUrl(cosUrl);
+        generationResult.setMethod(method.getValue());
+        generationResult.setKeywords(keywords);
+        generationResult.setSectionTitle(sectionTitle);
+        generationResult.setDescription(type);
+        generationResult.setPlaceholderId(placeholderId);
+        generationResult.setSuccess(true);
+        generationResult.setRequestedMethod(requestedMethod);
+        generationResult.setAttemptedMethods(attemptedMethods);
+        generationResult.setFallbackApplied(attemptedMethods.size() > 1);
+        generationResult.setFallbackReason(fallbackDecision == null ? null : fallbackDecision.getFallbackReason());
+        return generationResult;
+    }
+
+    private ImageGenerationResult applyTerminalFallback(ImageRequest imageRequest, ImageGenerationResult failedResult) {
+        ImageServiceStrategy.ImageResult finalFallback = imageServiceStrategy.getImageAndUpload(
+                ImageMethodEnum.getFallbackMethod().getValue(),
+                imageRequest
+        );
+        if (finalFallback != null && finalFallback.isSuccess()) {
+            failedResult.setUrl(finalFallback.getUrl());
+            failedResult.setMethod(finalFallback.getMethod().getValue());
+            failedResult.setSuccess(true);
+            if (failedResult.getAttemptedMethods() == null) {
+                failedResult.setAttemptedMethods(new ArrayList<>());
+            }
+            if (!failedResult.getAttemptedMethods().contains(finalFallback.getMethod().getValue())) {
+                failedResult.getAttemptedMethods().add(finalFallback.getMethod().getValue());
+            }
+            failedResult.setFallbackApplied(true);
+        }
+        return failedResult;
+    }
+
+    private com.yupi.template.model.dto.article.ArticleState.ImageRequirement buildRequirement(String imageSource,
+                                                                                               String keywords,
+                                                                                               String prompt,
+                                                                                               Integer position,
+                                                                                               String type,
+                                                                                               String sectionTitle,
+                                                                                               String placeholderId) {
+        com.yupi.template.model.dto.article.ArticleState.ImageRequirement requirement =
+                new com.yupi.template.model.dto.article.ArticleState.ImageRequirement();
+        requirement.setImageSource(imageSource);
+        requirement.setKeywords(keywords);
+        requirement.setPrompt(prompt);
+        requirement.setPosition(position);
+        requirement.setType(type);
+        requirement.setSectionTitle(sectionTitle);
+        requirement.setPlaceholderId(placeholderId);
+        return requirement;
     }
 
     /**
@@ -166,5 +266,9 @@ public class ImageGenerationTool {
         private String placeholderId;
         private boolean success;
         private String error;
+        private String requestedMethod;
+        private Boolean fallbackApplied;
+        private String fallbackReason;
+        private List<String> attemptedMethods;
     }
 }

@@ -1,11 +1,14 @@
-declare namespace API {
+﻿declare namespace API {
   type AgentExecutionStats = {
     taskId?: string
     totalDurationMs?: number
     agentCount?: number
     agentDurations?: Record<string, any>
+    nodeCount?: number
+    nodeDurations?: Record<string, any>
     overallStatus?: string
     logs?: AgentLog[]
+    nodeLogs?: NodeExecutionLogVO[]
   }
 
   type AgentLog = {
@@ -23,6 +26,62 @@ declare namespace API {
     createTime?: string
     updateTime?: string
     isDelete?: number
+  }
+
+  type NodeExecutionLogVO = {
+    taskId?: string
+    phase?: string
+    node?: string
+    status?: string
+    message?: string
+    elapsedMs?: number
+    timestamp?: number
+    promptKey?: string
+    promptVersion?: string
+    model?: string
+    temperature?: number
+    maxTokens?: number
+    topP?: number
+    decisionSource?: string
+    decisionReason?: string
+    decisionSummary?: string
+    memoryContextSummary?: string
+    memoryContextSnapshot?: string
+    fallbackSource?: string
+    fallbackReason?: string
+    fallbackSummary?: string
+  }
+
+  type NodeReplaySnapshotVO = {
+    snapshotId?: string
+    snapshotVersion?: string
+    taskId?: string
+    phase?: string
+    node?: string
+    status?: string
+    message?: string
+    startedAt?: number
+    finishedAt?: number
+    elapsedMs?: number
+    promptKey?: string
+    promptVersion?: string
+    model?: string
+    temperature?: number
+    maxTokens?: number
+    topP?: number
+    decisionSource?: string
+    decisionReason?: string
+    decisionSummary?: string
+    memoryContextSummary?: string
+    memoryContextSnapshot?: string
+    fallbackSource?: string
+    fallbackReason?: string
+    fallbackSummary?: string
+    inputSummary?: string
+    outputSummary?: string
+    errorMessage?: string
+    retryCount?: number
+    replayable?: boolean
   }
 
   type ArticleAiModifyOutlineRequest = {
@@ -48,6 +107,15 @@ declare namespace API {
     enabledImageMethods?: string[]
   }
 
+  type ArticleResumeRequest = {
+    taskId?: string
+  }
+
+  type ArticleRetryNodeRequest = {
+    taskId?: string
+    node?: string
+  }
+
   type ArticleQueryRequest = {
     pageNum?: number
     pageSize?: number
@@ -55,6 +123,117 @@ declare namespace API {
     sortOrder?: string
     userId?: number
     status?: string
+  }
+
+  type ArticleTaskSnapshotVO = {
+    taskId?: string
+    topic?: string
+    style?: string
+    userDescription?: string
+    status?: string
+    phase?: string
+    progress?: number
+    errorMessage?: string
+    titleOptions?: TitleOption[]
+    title?: TitleOption
+    outline?: OutlineSection[]
+    outlineRaw?: string
+    content?: string
+    fullContent?: string
+    enabledImageMethods?: string[]
+    imageRequirements?: ImageRequirement[]
+    images?: ImageItem[]
+    updatedAt?: number
+  }
+
+  type ArticleTaskMemoryVO = {
+    taskId?: string
+    userId?: number
+    topic?: string
+    style?: string
+    userDescription?: string
+    currentPhase?: string
+    lastSuccessNode?: string
+    lastFailedNode?: string
+    retryCount?: number
+    recentErrorMessage?: string
+    selectedTitle?: TitleOption
+    outlineSummary?: MemorySummaryVO
+    contentSummary?: MemorySummaryVO
+    contentReview?: MemoryContentReviewVO
+    imageStrategy?: MemoryImageStrategyVO
+    qualitySignals?: MemorySignalVO[]
+    manualActions?: MemoryActionVO[]
+    nodeSnapshots?: NodeSnapshotVO[]
+    updatedAt?: number
+  }
+
+  type UserCreationPreferenceVO = {
+    userId?: number
+    preferredStyle?: string
+    preferredImageMethods?: string[]
+    styleUsage?: Record<string, any>
+    imageMethodUsage?: Record<string, any>
+    recentFailureTags?: string[]
+    completedTaskCount?: number
+    updatedAt?: number
+  }
+
+  type MemorySummaryVO = {
+    text?: string
+    sourceCount?: number
+    highlights?: string[]
+    sourceType?: string
+  }
+
+  type MemoryImageStrategyVO = {
+    methods?: string[]
+    needImages?: boolean
+    decisionReason?: string
+    decisionSource?: string
+    requirementCount?: number
+    generatedCount?: number
+    sources?: string[]
+    fallbackCount?: number
+    fallbackSummary?: string
+  }
+
+  type MemoryContentReviewVO = {
+    needsRevision?: boolean
+    revised?: boolean
+    issueCount?: number
+    summary?: string
+    issues?: string[]
+    qualitySignals?: string[]
+  }
+
+  type MemorySignalVO = {
+    code?: string
+    label?: string
+    detail?: string
+    phase?: string
+    node?: string
+    timestamp?: number
+  }
+
+  type MemoryActionVO = {
+    type?: string
+    label?: string
+    detail?: string
+    phase?: string
+    node?: string
+    timestamp?: number
+  }
+
+  type NodeSnapshotVO = {
+    node?: string
+    phase?: string
+    label?: string
+    status?: string
+    summary?: string
+    detail?: string
+    highlights?: string[]
+    timestamp?: number
   }
 
   type ArticleVO = {
@@ -76,6 +255,7 @@ declare namespace API {
     errorMessage?: string
     createTime?: string
     completedTime?: string
+    updateTime?: string
   }
 
   type BaseResponseAgentExecutionStats = {
@@ -84,9 +264,27 @@ declare namespace API {
     message?: string
   }
 
+  type BaseResponseArticleTaskSnapshotVO = {
+    code?: number
+    data?: ArticleTaskSnapshotVO
+    message?: string
+  }
+
+  type BaseResponseArticleTaskMemoryVO = {
+    code?: number
+    data?: ArticleTaskMemoryVO
+    message?: string
+  }
+
   type BaseResponseArticleVO = {
     code?: number
     data?: ArticleVO
+    message?: string
+  }
+
+  type BaseResponseUserCreationPreferenceVO = {
+    code?: number
+    data?: UserCreationPreferenceVO
     message?: string
   }
 
@@ -99,6 +297,12 @@ declare namespace API {
   type BaseResponseListOutlineSection = {
     code?: number
     data?: OutlineSection[]
+    message?: string
+  }
+
+  type BaseResponseListNodeReplaySnapshotVO = {
+    code?: number
+    data?: NodeReplaySnapshotVO[]
     message?: string
   }
 
@@ -178,6 +382,18 @@ declare namespace API {
     taskId: string
   }
 
+  type getTaskSnapshotParams = {
+    taskId: string
+  }
+
+  type getTaskMemoryParams = {
+    taskId: string
+  }
+
+  type getNodeReplaySnapshotsParams = {
+    taskId: string
+  }
+
   type getUserByIdParams = {
     id: number
   }
@@ -193,6 +409,21 @@ declare namespace API {
     keywords?: string
     sectionTitle?: string
     description?: string
+    placeholderId?: string
+    requestedMethod?: string
+    fallbackApplied?: boolean
+    fallbackReason?: string
+    attemptedMethods?: string[]
+  }
+
+  type ImageRequirement = {
+    position?: number
+    type?: string
+    sectionTitle?: string
+    keywords?: string
+    imageSource?: string
+    prompt?: string
+    placeholderId?: string
   }
 
   type LoginUserVO = {
