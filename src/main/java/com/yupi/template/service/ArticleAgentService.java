@@ -1,6 +1,7 @@
-﻿package com.yupi.template.service;
+package com.yupi.template.service;
 
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
+import cn.hutool.core.util.StrUtil;
 import com.google.gson.reflect.TypeToken;
 import com.yupi.template.annotation.AgentExecution;
 import com.yupi.template.agent.agents.AgentPromptSupport;
@@ -14,6 +15,7 @@ import com.yupi.template.model.vo.ImageFallbackDecisionVO;
 import com.yupi.template.model.vo.ImageStrategyDecisionVO;
 import com.yupi.template.model.vo.NodeExecutionMetadata;
 import com.yupi.template.utils.GsonUtils;
+import com.yupi.template.utils.ImagePlaceholderUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -188,7 +190,7 @@ public class ArticleAgentService {
                 content.length(), profile.getModel(), profile.getPromptKey(), profile.getPromptVersion());
     }
 
-    @AgentExecution(value = "agent3_review_content", description = "璇勫姝ｆ枃骞舵渶灏忎慨璁?)
+    @AgentExecution(value = "agent3_review_content", description = "评审正文并做最小修订")
     public void agent3ReviewContent(ArticleState state, NodeExecutionMetadata metadata) {
         AgentProfile profile = resolveProfile(CONTENT_REVIEW_PROFILE, "agent3_content_review", false, true);
         String outlineText = GsonUtils.toJson(state.getOutline().getSections());
@@ -233,7 +235,7 @@ public class ArticleAgentService {
                 state.getTaskId(), decision.getSource(), decision.getPreferredMethods());
     }
 
-    @AgentExecution(value = "agent4_analyze_image_requirements", description = "鍒嗘瀽閰嶅浘闇€姹?)
+    @AgentExecution(value = "agent4_analyze_image_requirements", description = "分析配图需求")
     public void agent4AnalyzeImageRequirements(ArticleState state, NodeExecutionMetadata metadata) {
         AgentProfile profile = resolveProfile(IMAGE_PROFILE, "agent4_image", false, true);
         ArticleMemoryContextVO memoryContext = articleMemoryService.buildCreationMemoryContext(state.getTaskId(), null);
@@ -255,11 +257,12 @@ public class ArticleAgentService {
                 this::isValidAgent4Result
         );
 
-        state.setContent(agent4Result.getContentWithPlaceholders());
         List<ArticleState.ImageRequirement> validatedRequirements = validateAndFilterImageRequirements(
                 agent4Result.getImageRequirements(),
                 state.getEnabledImageMethods()
         );
+        String contentWithPlaceholders = ImagePlaceholderUtils.applyPlaceholders(state.getContent(), validatedRequirements);
+        state.setContent(contentWithPlaceholders);
         state.setImageRequirements(validatedRequirements);
         applyImageAnalyzerSummary(metadata, validatedRequirements, state.getEnabledImageMethods());
         log.info("Image requirements analyzed, rawCount={}, validatedCount={}, model={}, promptKey={}, promptVersion={}",
@@ -683,7 +686,6 @@ public class ArticleAgentService {
 
     private boolean isValidAgent4Result(ArticleState.Agent4Result result) {
         return result != null
-                && isNotBlank(result.getContentWithPlaceholders())
                 && result.getImageRequirements() != null;
     }
 
@@ -736,30 +738,30 @@ public class ArticleAgentService {
             return "";
         }
         StringBuilder builder = new StringBuilder();
-        builder.append("\n\n闀挎湡璁板繂鎻愮ず锛歕n");
+        builder.append("\n\n长期记忆提示：\n");
         if (qualityHints != null && !qualityHints.isEmpty()) {
-            builder.append("- 鍘嗗彶鎴愬姛璐ㄩ噺淇″彿锛?).append(String.join(", ", qualityHints)).append("\n");
+            builder.append("- 历史成功质量信号：").append(String.join(", ", qualityHints)).append("\n");
         }
         if (failureHints != null && !failureHints.isEmpty()) {
-            builder.append("- 鍘嗗彶澶辫触鎻愰啋锛?).append(String.join(", ", failureHints)).append("\n");
+            builder.append("- 历史失败提醒：").append(String.join(", ", failureHints)).append("\n");
         }
         if (successCases != null && !successCases.isEmpty()) {
-            builder.append("- 鐩镐技鎴愬姛妗堜緥锛?);
+            builder.append("- 相似成功案例：");
             builder.append(successCases.stream()
                     .limit(2)
                     .map(item -> firstNonBlank(item.getSummary(), item.getTopic()))
-                    .collect(Collectors.joining("锛?)));
+                    .collect(Collectors.joining("；")));
             builder.append("\n");
         }
         if (failureCases != null && !failureCases.isEmpty()) {
-            builder.append("- 鐩镐技澶辫触妗堜緥锛?);
+            builder.append("- 相似失败案例：");
             builder.append(failureCases.stream()
                     .limit(2)
                     .map(item -> firstNonBlank(item.getFailedNode(), firstNonBlank(item.getSummary(), item.getTopic())))
-                    .collect(Collectors.joining("锛?)));
+                    .collect(Collectors.joining("；")));
             builder.append("\n");
         }
-        builder.append("璇峰皢杩欎簺鎻愮ず浣滀负杞婚噺绾︽潫锛屽彧鍦ㄥ繀瑕佹椂鍋氭渶灏忎慨璁紝涓嶈鍥犱负鍘嗗彶鎻愮ず鑰岄噸鍐欐暣绡囨枃绔犮€?);
+        builder.append("请将这些提示作为轻量约束，只在必要时做最小修订，不要因为历史提示而重写整篇文章。");
         return builder.toString();
     }
 

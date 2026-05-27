@@ -1,0 +1,15 @@
+﻿{
+  "caseId": "education-topic-001",
+  "topic": "如何向中学生讲清楚什么是大模型",
+  "style": "教育风格",
+  "userDescription": "要求通俗易懂，避免堆术语，内容有层次，适合教学分享。",
+  "enabledImageMethods": ["PEXELS", "ICONIFY", "SVG_DIAGRAM"],
+  "tags": ["education", "explanation", "clarity"],
+  "expectations": {
+    "minTitleCount": 3,
+    "minOutlineSections": 4,
+    "minImageCount": 1,
+    "requireContentReview": true
+  },
+  "notes": "用于验证教育风格下的可读性、结构性和配图合理性。"
+}

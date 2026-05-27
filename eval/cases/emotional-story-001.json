@@ -1,0 +1,15 @@
+﻿{
+  "caseId": "emotional-story-001",
+  "topic": "一个普通人如何走出长期自我怀疑",
+  "style": "情感风格",
+  "userDescription": "希望语言温暖，不要空泛说教，适当加入共鸣式表达，图片以真实人物和生活场景为主。",
+  "enabledImageMethods": ["PEXELS", "EMOJI_PACK"],
+  "tags": ["emotional", "narrative", "realistic-image"],
+  "expectations": {
+    "minTitleCount": 3,
+    "minOutlineSections": 3,
+    "minImageCount": 1,
+    "requireReviewerParticipation": true
+  },
+  "notes": "用于验证情感风格下正文质量、Reviewer 介入和写实图片选择。"
+}

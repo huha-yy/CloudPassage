@@ -1,0 +1,15 @@
+﻿{
+  "caseId": "ambiguous-brief-001",
+  "topic": "未来的工作会被 AI 改变吗",
+  "style": "轻松幽默",
+  "userDescription": "要求轻松但不要失控，既要有观点，也要有生活化例子，图片需求不需要太多，但不能完全没有。",
+  "enabledImageMethods": ["PEXELS", "ICONIFY", "EMOJI_PACK"],
+  "tags": ["ambiguous", "boundary", "humor"],
+  "expectations": {
+    "minTitleCount": 3,
+    "minOutlineSections": 3,
+    "minImageCount": 1,
+    "requireStableCompletion": true
+  },
+  "notes": "用于验证在描述模糊、风格较松弛时，系统是否仍能稳定完成主链路。"
+}

@@ -6,7 +6,8 @@ import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.yupi.template.agent.config.AgentProfile;
 import com.yupi.template.model.dto.article.ArticleState;
 import com.yupi.template.model.enums.ImageMethodEnum;
-import com.yupi.template.utils.GsonUtils;
+import com.yupi.template.service.ArticleStructuredOutputService;
+import com.yupi.template.utils.ImagePlaceholderUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -29,6 +30,7 @@ public class ImageAnalyzerAgent implements NodeAction {
 
     private final DashScopeChatModel chatModel;
     private final AgentPromptSupport agentPromptSupport;
+    private final ArticleStructuredOutputService articleStructuredOutputService;
 
     public static final String INPUT_MAIN_TITLE = "mainTitle";
     public static final String INPUT_CONTENT = "content";
@@ -59,28 +61,40 @@ public class ImageAnalyzerAgent implements NodeAction {
                 .replace("{content}", content)
                 .replace("{availableMethods}", availableMethods)
                 .replace("{methodUsageGuide}", methodUsageGuide);
-        Prompt prompt = agentPromptSupport.buildPrompt(promptContent, profile, false);
-
         log.info("ImageAnalyzerAgent started, mainTitle={}, model={}, promptKey={}, promptVersion={}, enabledMethods={}",
                 mainTitle, profile.getModel(), profile.getPromptKey(), profile.getPromptVersion(), enabledMethods);
 
-        ChatResponse response = chatModel.call(prompt);
-        String responseContent = response.getResult().getOutput().getText();
-        ArticleState.Agent4Result agent4Result = GsonUtils.fromJson(responseContent, ArticleState.Agent4Result.class);
+        ArticleState.Agent4Result agent4Result = articleStructuredOutputService.execute(
+                promptContent,
+                "imageRequirements",
+                retryPrompt -> {
+                    Prompt prompt = agentPromptSupport.buildPrompt(retryPrompt, profile, false);
+                    ChatResponse response = chatModel.call(prompt);
+                    return response.getResult().getOutput().getText();
+                },
+                ArticleState.Agent4Result.class,
+                this::isValidAgent4Result
+        );
 
         List<ArticleState.ImageRequirement> validatedRequirements = validateAndFilterImageRequirements(
                 agent4Result.getImageRequirements(),
                 enabledMethods
         );
+        String contentWithPlaceholders = ImagePlaceholderUtils.applyPlaceholders(content, validatedRequirements);
 
         log.info("ImageAnalyzerAgent finished, rawRequirements={}, validatedRequirements={}",
                 agent4Result.getImageRequirements().size(), validatedRequirements.size());
 
         return Map.of(
-                OUTPUT_CONTENT_WITH_PLACEHOLDERS, agent4Result.getContentWithPlaceholders(),
-                INPUT_CONTENT, agent4Result.getContentWithPlaceholders(),
+                OUTPUT_CONTENT_WITH_PLACEHOLDERS, contentWithPlaceholders,
+                INPUT_CONTENT, contentWithPlaceholders,
                 OUTPUT_IMAGE_REQUIREMENTS, validatedRequirements
         );
+    }
+
+    private boolean isValidAgent4Result(ArticleState.Agent4Result result) {
+        return result != null
+                && result.getImageRequirements() != null;
     }
 
     private String buildAvailableMethodsDescription(List<String> enabledMethods) {

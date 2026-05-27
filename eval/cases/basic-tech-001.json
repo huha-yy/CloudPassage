@@ -1,0 +1,15 @@
+﻿{
+  "caseId": "basic-tech-001",
+  "topic": "AI Agent 在内容生产系统中的应用实践",
+  "style": "科技风格",
+  "userDescription": "面向初学者，要求结构清晰，术语适度解释，并给出适合配图的小节。",
+  "enabledImageMethods": ["PEXELS", "MERMAID", "SVG_DIAGRAM"],
+  "tags": ["basic", "tech", "standard", "memory-check"],
+  "expectations": {
+    "minTitleCount": 3,
+    "minOutlineSections": 4,
+    "minImageCount": 2,
+    "requireImageAnalysis": true
+  },
+  "notes": "标准科技主题，用于验证标题、大纲、正文、图片分析与图片生成主链路。"
+}

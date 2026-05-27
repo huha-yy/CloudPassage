@@ -1,0 +1,15 @@
+﻿{
+  "caseId": "diagram-architecture-001",
+  "topic": "多 Agent 内容生成平台的后端架构设计",
+  "style": "科技风格",
+  "userDescription": "重点解释模块关系、调用链路和状态流转，适合配流程图、架构图或示意图。",
+  "enabledImageMethods": ["MERMAID", "SVG_DIAGRAM", "ICONIFY"],
+  "tags": ["diagram", "architecture", "router-check"],
+  "expectations": {
+    "minTitleCount": 3,
+    "minOutlineSections": 4,
+    "minImageCount": 2,
+    "preferredImageSources": ["MERMAID", "SVG_DIAGRAM"]
+  },
+  "notes": "用于验证图片策略路由是否更倾向图表型方法，并检查图片需求分析链路。"
+}

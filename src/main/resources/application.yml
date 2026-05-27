@@ -148,3 +148,11 @@ prompt:
       top-p: 0.8
       structured-output: true
       streaming: false
+
+  eval:
+    enabled: false
+    cases-dir: eval/cases
+    runs-dir: eval/runs
+    user-account: admin
+    poll-interval-ms: 3000
+    timeout-ms: 600000

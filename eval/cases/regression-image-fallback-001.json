@@ -1,0 +1,15 @@
+﻿{
+  "caseId": "regression-image-fallback-001",
+  "topic": "用一篇文章解释企业级 Agent 工作流如何处理异常与恢复",
+  "style": "科技风格",
+  "userDescription": "要求至少包含一个流程型配图和一个概念型配图，用于验证图片生成链路和失败降级链路。",
+  "enabledImageMethods": ["MERMAID", "SVG_DIAGRAM", "NANO_BANANA"],
+  "tags": ["regression", "fallback", "image-chain"],
+  "expectations": {
+    "minTitleCount": 3,
+    "minOutlineSections": 4,
+    "minImageCount": 2,
+    "trackFallback": true
+  },
+  "notes": "用于回归验证图片生成失败后是否能正确记录降级链路、最终方法和结果。"
+}
