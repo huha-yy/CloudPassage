@@ -23,27 +23,21 @@ public class ImageFallbackRouterServiceImpl implements ImageFallbackRouterServic
         LinkedHashSet<String> attempted = new LinkedHashSet<>();
         addIfValid(attempted, requestedMethod);
 
-        boolean diagramLike = isDiagramLike(requestedMethod);
-        boolean realisticLike = isRealisticLike(requestedMethod);
-
-        if (diagramLike) {
-            addIfAllowed(attempted, enabledMethods, ImageMethodEnum.SVG_DIAGRAM.getValue());
-            addIfAllowed(attempted, enabledMethods, ImageMethodEnum.ICONIFY.getValue());
-            addIfAllowed(attempted, enabledMethods, ImageMethodEnum.PEXELS.getValue());
-        } else if (realisticLike) {
-            addIfAllowed(attempted, enabledMethods, ImageMethodEnum.PEXELS.getValue());
-            addIfAllowed(attempted, enabledMethods, ImageMethodEnum.NANO_BANANA.getValue());
-            addIfAllowed(attempted, enabledMethods, ImageMethodEnum.ICONIFY.getValue());
+        if (isDiagramLike(requestedMethod)) {
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.MERMAID.getValue());
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.SVG_DIAGRAM.getValue());
+        } else if (isRealisticLike(requestedMethod)) {
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.NANO_BANANA.getValue());
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.PEXELS.getValue());
+        } else if (ImageMethodEnum.ICONIFY.getValue().equals(requestedMethod)) {
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.ICONIFY.getValue());
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.PEXELS.getValue());
+        } else if (ImageMethodEnum.EMOJI_PACK.getValue().equals(requestedMethod)) {
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.EMOJI_PACK.getValue());
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.PEXELS.getValue());
         } else {
-            addIfAllowed(attempted, enabledMethods, ImageMethodEnum.ICONIFY.getValue());
-            addIfAllowed(attempted, enabledMethods, ImageMethodEnum.PEXELS.getValue());
-            addIfAllowed(attempted, enabledMethods, ImageMethodEnum.SVG_DIAGRAM.getValue());
-        }
-
-        if (enabledMethods != null) {
-            for (String method : enabledMethods) {
-                addIfValid(attempted, method);
-            }
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.PEXELS.getValue());
+            addIfCompatible(attempted, enabledMethods, ImageMethodEnum.ICONIFY.getValue());
         }
         addIfValid(attempted, ImageMethodEnum.getFallbackMethod().getValue());
 
@@ -71,7 +65,7 @@ public class ImageFallbackRouterServiceImpl implements ImageFallbackRouterServic
                 || ImageMethodEnum.PEXELS.getValue().equals(method);
     }
 
-    private void addIfAllowed(Set<String> attempted, List<String> enabledMethods, String candidate) {
+    private void addIfCompatible(Set<String> attempted, List<String> enabledMethods, String candidate) {
         if (enabledMethods == null || enabledMethods.isEmpty() || enabledMethods.contains(candidate)) {
             addIfValid(attempted, candidate);
         }

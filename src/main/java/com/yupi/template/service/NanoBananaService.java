@@ -116,6 +116,13 @@ public class NanoBananaService implements ImageSearchService {
     }
 
     @Override
+    public boolean isAvailable() {
+        return nanoBananaConfig != null
+                && nanoBananaConfig.getApiKey() != null
+                && !nanoBananaConfig.getApiKey().isBlank();
+    }
+
+    @Override
     public String getFallbackImage(int position) {
         return String.format(PICSUM_URL_TEMPLATE, position);
     }
