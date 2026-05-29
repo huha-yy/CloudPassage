@@ -33,9 +33,9 @@ create table if not exists user
 -- 初始化数据
 -- 密码是 12345678（MD5 加密 + 盐值 yupi）
 INSERT INTO user (id, userAccount, userPassword, userName, userAvatar, userProfile, userRole) VALUES
-(1, 'admin', '10670d38ec32fa8102be6a37f8cb52bf', '管理员', 'XXXX/logo.png', '系统管理员', 'admin'),
-(2, 'user', '10670d38ec32fa8102be6a37f8cb52bf', '普通用户', 'XXXX/logo.png', '我是一个普通用户', 'user'),
-(3, 'test', '10670d38ec32fa8102be6a37f8cb52bf', '测试账号', 'XXXX/logo.png', '这是一个测试账号', 'user');
+(1, 'admin', '10670d38ec32fa8102be6a37f8cb52bf', '管理员', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23ffffff%22/%3E%3C/svg%3E', '系统管理员', 'admin'),
+(2, 'user', '10670d38ec32fa8102be6a37f8cb52bf', '普通用户', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23ffffff%22/%3E%3C/svg%3E', '我是一个普通用户', 'user'),
+(3, 'test', '10670d38ec32fa8102be6a37f8cb52bf', '测试账号', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23ffffff%22/%3E%3C/svg%3E', '这是一个测试账号', 'user');
 
 -- 文章表（基础字段，style/phase/titleOptions/userDescription/enabledImageMethods 由增量脚本添加）
 create table if not exists article
